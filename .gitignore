@@ -1,0 +1,17 @@
+# Visual Studio
+.vs/
+Debug/
+Release/
+x64/
+x86/
+
+*.user
+*.VC.db
+*.VC.opendb
+*.suo
+*.ipch
+*.ilk
+*.log
+
+# Archivos temporales
+*.tmp
