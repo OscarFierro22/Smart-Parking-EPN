@@ -6,37 +6,107 @@ in vec3 FragPos;
 in vec3 Normal;
 in vec2 TexCoords;
 
-uniform vec3 lightPos;
-uniform vec3 lightColor;
+#define NR_POINT_LIGHTS 108
+
+struct PointLight
+{
+    vec3 position;
+
+    vec3 ambient;
+    vec3 diffuse;
+    vec3 specular;
+
+    float constant;
+    float linear;
+    float quadratic;
+};
+
+uniform PointLight pointLights[NR_POINT_LIGHTS];
 uniform vec3 viewPos;
 
 uniform vec3 materialDiffuse;
 uniform vec3 materialSpecular;
 uniform float materialShininess;
 
+vec3 CalculatePointLight(
+    PointLight light,
+    vec3 normal,
+    vec3 fragmentPosition,
+    vec3 viewDirection
+);
+
 void main()
 {
-    float ambientStrength = 0.45;
-    vec3 ambient = ambientStrength * lightColor * materialDiffuse;
+    vec3 normalizedNormal = normalize(Normal);
+    vec3 viewDirection = normalize(viewPos - FragPos);
 
-    vec3 norm = normalize(Normal);
-    vec3 lightDir = normalize(lightPos - FragPos);
+    vec3 result = vec3(0.0f);
 
-    float diff = max(dot(norm, lightDir), 0.0);
-    vec3 diffuse = diff * lightColor * materialDiffuse;
+    for (int i = 0; i < NR_POINT_LIGHTS; i++)
+    {
+        result += CalculatePointLight(
+            pointLights[i],
+            normalizedNormal,
+            FragPos,
+            viewDirection
+        );
+    }
 
-    vec3 viewDir = normalize(viewPos - FragPos);
-    vec3 reflectDir = reflect(-lightDir, norm);
+    FragColor = vec4(result, 1.0f);
+}
 
-    float spec = pow(
-        max(dot(viewDir, reflectDir), 0.0),
+vec3 CalculatePointLight(
+    PointLight light,
+    vec3 normal,
+    vec3 fragmentPosition,
+    vec3 viewDirection
+)
+{
+    vec3 lightDirection =
+        normalize(light.position - fragmentPosition);
+
+    // Componente ambiental
+    vec3 ambient =
+        light.ambient * materialDiffuse;
+
+    // Componente difusa
+    float diffuseIntensity =
+        max(dot(normal, lightDirection), 0.0f);
+
+    vec3 diffuse =
+        light.diffuse *
+        diffuseIntensity *
+        materialDiffuse;
+
+    // Componente especular
+    vec3 reflectionDirection =
+        reflect(-lightDirection, normal);
+
+    float specularIntensity = pow(
+        max(dot(viewDirection, reflectionDirection), 0.0f),
         materialShininess
     );
 
     vec3 specular =
-        spec * lightColor * materialSpecular;
+        light.specular *
+        specularIntensity *
+        materialSpecular;
 
-    vec3 result = ambient + diffuse + specular;
+    // Distancia y atenuación
+    float distance =
+        length(light.position - fragmentPosition);
 
-    FragColor = vec4(result, 1.0);
+    float attenuation =
+        1.0f /
+        (
+            light.constant +
+            light.linear * distance +
+            light.quadratic * distance * distance
+        );
+
+    ambient *= attenuation;
+    diffuse *= attenuation;
+    specular *= attenuation;
+
+    return ambient + diffuse + specular;
 }

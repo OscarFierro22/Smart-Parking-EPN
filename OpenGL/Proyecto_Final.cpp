@@ -87,6 +87,7 @@ int main()
     // -----------
     //Model ourModel(FileSystem::getPath("resources/objects/backpack/backpack.obj"));
     Model parkingModel("model/parking/parking.obj");
+    Model lightModel("model/ceilinglight/ceilinglight.obj");
     //C:/Users/roma9/source/repos/Proyecto_Final_OpenGL/OpenGL/model/parking/parking.obj
     //Model ourModel("model/backpack/backpack.obj");
 
@@ -94,6 +95,80 @@ int main()
 
     // draw in wireframe
     //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+
+
+    glm::vec3 lampPositions[] = {
+
+        // PRIMER PISO (Y = 4.5834)
+        glm::vec3(-15.2176f,  4.5834f, 8.7f),
+        glm::vec3(-15.2176f,  4.5834f, -4.7f),
+        glm::vec3(-5.2176f,  4.5834f, 8.7f),
+        glm::vec3(-5.2176f,  4.5834f, -4.7f),
+        glm::vec3(18.2180f,  4.5834f, 8.7f),
+        glm::vec3(18.2180f,  4.5834f, -4.7f),
+        glm::vec3(8.2180f,  4.5834f, 8.7f),
+        glm::vec3(8.2180f,  4.5834f, -4.7f),
+
+        glm::vec3(23.7700f,  4.5834f, 20.0f),
+        glm::vec3(0.8734f,  4.5834f, 20.0f),
+        glm::vec3(-22.0232f,  4.5834f, 20.0f),
+        glm::vec3(36.809f,  4.5834f, 20.0f),
+        glm::vec3(-36.809f,  4.5834f, 20.0f),
+        glm::vec3(23.7700f,  4.5834f, -23.0f),
+        glm::vec3(0.8734f,  4.5834f, -23.0f),
+        glm::vec3(-22.0232f,  4.5834f, -23.0f),
+        glm::vec3(36.809f,  4.5834f, -23.0f),
+        glm::vec3(-36.809f,  4.5834f, -23.0f),
+
+        // SEGUNDO PISO (Y = 12.5810)
+        glm::vec3(-15.2176f, 12.5810f, 8.7f),
+        glm::vec3(-15.2176f, 12.5810f, -4.7f),
+        glm::vec3(-5.2176f, 12.5810f, 8.7f),
+        glm::vec3(-5.2176f, 12.5810f, -4.7f),
+        glm::vec3(18.2180f, 12.5810f, 8.7f),
+        glm::vec3(18.2180f, 12.5810f, -4.7f),
+        glm::vec3(8.2180f, 12.5810f, 8.7f),
+        glm::vec3(8.2180f, 12.5810f, -4.7f),
+
+        glm::vec3(23.7700f, 12.5810f, 20.0f),
+        glm::vec3(0.8734f, 12.5810f, 20.0f),
+        glm::vec3(-22.0232f, 12.5810f, 20.0f),
+        glm::vec3(36.809f, 12.5810f, 20.0f),
+        glm::vec3(-36.809f, 12.5810f, 20.0f),
+        glm::vec3(23.7700f, 12.5810f, -23.0f),
+        glm::vec3(0.8734f, 12.5810f, -23.0f),
+        glm::vec3(-22.0232f, 12.5810f, -23.0f),
+        glm::vec3(36.809f, 12.5810f, -23.0f),
+        glm::vec3(-36.809f, 12.5810f, -23.0f),
+
+        // TERCER PISO (Y = 20.5786)
+        glm::vec3(-15.2176f, 20.5786f, 8.7f),
+        glm::vec3(-15.2176f, 20.5786f, -4.7f),
+        glm::vec3(-5.2176f, 20.5786f, 8.7f),
+        glm::vec3(-5.2176f, 20.5786f, -4.7f),
+        glm::vec3(18.2180f, 20.5786f, 8.7f),
+        glm::vec3(18.2180f, 20.5786f, -4.7f),
+        glm::vec3(8.2180f, 20.5786f, 8.7f),
+        glm::vec3(8.2180f, 20.5786f, -4.7f),
+
+        glm::vec3(23.7700f, 20.5786f, 20.0f),
+        glm::vec3(0.8734f, 20.5786f, 20.0f),
+        glm::vec3(-22.0232f, 20.5786f, 20.0f),
+        glm::vec3(36.809f, 20.5786f, 20.0f),
+        glm::vec3(-36.809f, 20.5786f, 20.0f),
+        glm::vec3(23.7700f, 20.5786f, -23.0f),
+        glm::vec3(0.8734f, 20.5786f, -23.0f),
+        glm::vec3(-22.0232f, 20.5786f, -23.0f),
+        glm::vec3(36.809f, 20.5786f, -23.0f),
+        glm::vec3(-36.809f, 20.5786f, -23.0f),
+    };
+
+    glm::vec3 lightOffsets[] = {
+    glm::vec3(-1.7f, -2.00f, 0.0f),
+    //glm::vec3(0.0f, -2.00f, 0.0f),
+    glm::vec3(1.7f, -2.00f, 0.0f)
+    };
+
 
     // render loop
     // -----------
@@ -117,10 +192,43 @@ int main()
         // don't forget to enable shader before setting uniforms
         ourShader.use();
 
-        ourShader.setVec3("lightPos",glm::vec3(0.0f, 15.0f, 5.0f));
-        ourShader.setVec3("lightColor",glm::vec3(1.0f, 1.0f, 1.0f));
+        //ourShader.setVec3("lightPos",glm::vec3(0.0f, 15.0f, 5.0f));
+        //ourShader.setVec3("lightColor",glm::vec3(1.0f, 1.0f, 1.0f));
         ourShader.setVec3("viewPos",camera.Position);
         //ourShader.setVec3("objectColor",glm::vec3(0.45f, 0.45f, 0.50f));
+
+        const int lampCount =sizeof(lampPositions) / sizeof(lampPositions[0]);
+
+        const int lightsPerLamp =sizeof(lightOffsets) / sizeof(lightOffsets[0]);
+
+        int lightIndex = 0;
+
+        for (int i = 0; i < lampCount; i++)
+        {
+            for (int j = 0; j < lightsPerLamp; j++)
+            {
+                glm::vec3 currentLightPosition =
+                    lampPositions[i] + lightOffsets[j];
+
+                std::string base =
+                    "pointLights[" + std::to_string(lightIndex) + "]";
+
+                ourShader.setVec3(base + ".position",currentLightPosition);
+
+                ourShader.setVec3(base + ".ambient",glm::vec3(0.025f, 0.025f, 0.020f));
+
+                ourShader.setVec3(base + ".diffuse",glm::vec3(0.65f, 0.62f, 0.48f));
+
+                ourShader.setVec3(base + ".specular",glm::vec3(0.80f, 0.78f, 0.65f));
+
+                ourShader.setFloat(base + ".constant", 1.0f);
+                ourShader.setFloat(base + ".linear", 0.14f);
+                ourShader.setFloat(base + ".quadratic", 0.07f);
+
+                lightIndex++;
+            }
+        }
+
 
         // view/projection transformations
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
@@ -137,19 +245,23 @@ int main()
 
         // renderizar el estacionamiento
         glm::mat4 parking = glm::mat4(1.0f);
-
-        parking = glm::translate(
-            parking,
-            glm::vec3(0.0f, 0.0f, 0.0f)
-        );
-
-        parking = glm::scale(
-            parking,
-            glm::vec3(1.0f, 1.0f, 1.0f)
-        );
+        parking = glm::translate(parking,glm::vec3(0.0f, 0.0f, 0.0f));
+        parking = glm::scale(parking,glm::vec3(1.0f, 1.0f, 1.0f));
 
         ourShader.setMat4("model", parking);
         parkingModel.Draw(ourShader);
+
+
+        for (int i = 0; i < lampCount; i++)
+        {
+            glm::mat4 lamp = glm::mat4(1.0f);
+
+            lamp = glm::translate(lamp, lampPositions[i]);
+            lamp = glm::scale(lamp, glm::vec3(1.0f));
+
+            ourShader.setMat4("model", lamp);
+            lightModel.Draw(ourShader);
+        }
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
