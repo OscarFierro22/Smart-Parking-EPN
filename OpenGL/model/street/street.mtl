@@ -1,0 +1,165 @@
+# Blender 5.1.2 MTL File: 'None'
+# www.blender.org
+
+newmtl Road
+Ns 360.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd C:/Road_baseColor.png
+map_Bump -bm 1.000000 C:/Road_normal.png
+
+newmtl Road.001
+Ns 360.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd C:/Road_baseColor.png
+map_Bump -bm 1.000000 C:/Road_normal.png
+
+newmtl Road.002
+Ns 360.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd C:/Road_baseColor.png
+map_Bump -bm 1.000000 C:/Road_normal.png
+
+newmtl Road3
+Ns 32.000008
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd C:/Road3_baseColor.png
+
+newmtl bord
+Ns 360.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd C:/bord_baseColor.png
+map_Bump -bm 1.000000 C:/bord_normal.png
+
+newmtl bord.001
+Ns 360.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd C:/bord_baseColor.png
+map_Bump -bm 1.000000 C:/bord_normal.png
+
+newmtl bord.002
+Ns 360.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd C:/bord_baseColor.png
+map_Bump -bm 1.000000 C:/bord_normal.png
+
+newmtl decal1
+Ns 32.000008
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+illum 2
+map_Kd C:/decal1_baseColor.png
+map_d C:/decal1_baseColor.png
+
+newmtl grass
+Ns 1000.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd C:/grass_baseColor.png
+map_Bump -bm 1.000000 C:/grass_normal.png
+
+newmtl grass.001
+Ns 1000.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd C:/grass_baseColor.png
+map_Bump -bm 1.000000 C:/grass_normal.png
+
+newmtl grass.002
+Ns 1000.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd C:/grass_baseColor.png
+map_Bump -bm 1.000000 C:/grass_normal.png
+
+newmtl material
+Ns 360.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd C:/material_baseColor.png
+map_Bump -bm 1.000000 C:/material_normal.png
+
+newmtl material.001
+Ns 360.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd C:/material_baseColor.png
+map_Bump -bm 1.000000 C:/material_normal.png
+
+newmtl material.002
+Ns 360.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd C:/material_baseColor.png
+map_Bump -bm 1.000000 C:/material_normal.png
+
+newmtl sever
+Ns 159.999985
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+illum 2
+map_Kd C:/sever_baseColor.png
+map_d C:/sever_baseColor.png
+map_Bump -bm 1.000000 C:/sever_normal.png

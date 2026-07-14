@@ -136,6 +136,8 @@
     <ClCompile Include="Proyecto_Final.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="shaders\night_sky.fs" />
+    <None Include="shaders\night_sky.vs" />
     <None Include="shaders\shader_exercise16_mloading.fs" />
     <None Include="shaders\shader_exercise16_mloading.vs" />
     <None Include="shaders\shader_project_mloading.fs" />

@@ -41,5 +41,11 @@
     <None Include="shaders\shader_project_mloading.fs">
       <Filter>Source Files\shaders</Filter>
     </None>
+    <None Include="shaders\night_sky.vs">
+      <Filter>Source Files\shaders</Filter>
+    </None>
+    <None Include="shaders\night_sky.fs">
+      <Filter>Source Files\shaders</Filter>
+    </None>
   </ItemGroup>
 </Project>

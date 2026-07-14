@@ -82,12 +82,15 @@ int main()
     // build and compile shaders
     // -------------------------
     Shader ourShader("shaders/shader_project_mloading.vs", "shaders/shader_project_mloading.fs");
+    Shader nightSkyShader("shaders/night_sky.vs","shaders/night_sky.fs");
 
     // load models
     // -----------
     //Model ourModel(FileSystem::getPath("resources/objects/backpack/backpack.obj"));
     Model parkingModel("model/parking/parking.obj");
     Model lightModel("model/ceilinglight/ceilinglight.obj");
+    Model streetModel("model/street/street.obj");
+    Model nightSkyModel("model/night_sky/night_sky.obj");
     //C:/Users/roma9/source/repos/Proyecto_Final_OpenGL/OpenGL/model/parking/parking.obj
     //Model ourModel("model/backpack/backpack.obj");
 
@@ -170,37 +173,89 @@ int main()
     };
 
 
+    const int lampCount =sizeof(lampPositions) /sizeof(lampPositions[0]);
+    const int lightsPerLamp =sizeof(lightOffsets) /sizeof(lightOffsets[0]);
+
     // render loop
     // -----------
     while (!glfwWindowShouldClose(window))
     {
-        // per-frame time logic
-        // --------------------
-        float currentFrame = glfwGetTime();
+        // ============================================
+        // 1. TIEMPO POR FOTOGRAMA
+        // ============================================
+        float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
-        // input
-        // -----
+        // ============================================
+        // 2. ENTRADA DE TECLADO Y CÁMARA
+        // ============================================
         processInput(window);
 
-        // render
-        // ------
-        glClearColor(0.12f, 0.15f, 0.20f, 1.0f);
+        // ============================================
+        // 3. LIMPIAR PANTALLA
+        // ============================================
+        glClearColor(0.005f, 0.008f, 0.020f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // don't forget to enable shader before setting uniforms
+        // ============================================
+        // 4. MATRICES DE CÁMARA
+        // ============================================
+        glm::mat4 projection = glm::perspective(
+            glm::radians(camera.Zoom),
+            static_cast<float>(SCR_WIDTH) /
+            static_cast<float>(SCR_HEIGHT),
+            0.1f,
+            5000.0f
+        );
+
+        glm::mat4 view = camera.GetViewMatrix();
+
+        // ============================================
+        // RENDERIZAR EL CIELO NOCTURNO
+        // ============================================
+        glDepthFunc(GL_LEQUAL);
+        glDepthMask(GL_FALSE);
+        glDisable(GL_CULL_FACE);
+
+        nightSkyShader.use();
+
+        // Conserva la rotación de la cámara,
+        // pero elimina su desplazamiento.
+        glm::mat4 skyView =
+            glm::mat4(glm::mat3(camera.GetViewMatrix()));
+
+        nightSkyShader.setMat4("projection", projection);
+        nightSkyShader.setMat4("view", skyView);
+
+        glm::mat4 nightSky = glm::mat4(1.0f);
+
+        // Prueba inicialmente con 20, no con 300.
+        nightSky = glm::scale(
+            nightSky,
+            glm::vec3(20.0f)
+        );
+
+        nightSkyShader.setMat4("model", nightSky);
+        nightSkyModel.Draw(nightSkyShader);
+
+        // Restaurar estados de OpenGL
+        glDepthMask(GL_TRUE);
+        glDepthFunc(GL_LESS);
+        glEnable(GL_CULL_FACE);
+
+        // ============================================
+        // 6. ACTIVAR SHADER PRINCIPAL
+        // ============================================
         ourShader.use();
 
-        //ourShader.setVec3("lightPos",glm::vec3(0.0f, 15.0f, 5.0f));
-        //ourShader.setVec3("lightColor",glm::vec3(1.0f, 1.0f, 1.0f));
-        ourShader.setVec3("viewPos",camera.Position);
-        //ourShader.setVec3("objectColor",glm::vec3(0.45f, 0.45f, 0.50f));
+        ourShader.setMat4("projection", projection);
+        ourShader.setMat4("view", view);
+        ourShader.setVec3("viewPos", camera.Position);
 
-        const int lampCount =sizeof(lampPositions) / sizeof(lampPositions[0]);
-
-        const int lightsPerLamp =sizeof(lightOffsets) / sizeof(lightOffsets[0]);
-
+        // ============================================
+        // 7. CONFIGURAR LAS LUCES DE LAS LÁMPARAS
+        // ============================================
         int lightIndex = 0;
 
         for (int i = 0; i < lampCount; i++)
@@ -211,60 +266,109 @@ int main()
                     lampPositions[i] + lightOffsets[j];
 
                 std::string base =
-                    "pointLights[" + std::to_string(lightIndex) + "]";
+                    "pointLights[" +
+                    std::to_string(lightIndex) +
+                    "]";
 
-                ourShader.setVec3(base + ".position",currentLightPosition);
+                ourShader.setVec3(
+                    base + ".position",
+                    currentLightPosition
+                );
 
-                ourShader.setVec3(base + ".ambient",glm::vec3(0.025f, 0.025f, 0.020f));
+                ourShader.setVec3(
+                    base + ".ambient",
+                    glm::vec3(0.01f, 0.01f, 0.015f)
+                );
 
-                ourShader.setVec3(base + ".diffuse",glm::vec3(0.65f, 0.62f, 0.48f));
+                ourShader.setVec3(
+                    base + ".diffuse",
+                    glm::vec3(1.0f, 0.85f, 0.55f)
+                );
 
-                ourShader.setVec3(base + ".specular",glm::vec3(0.80f, 0.78f, 0.65f));
+                ourShader.setVec3(
+                    base + ".specular",
+                    glm::vec3(1.0f, 0.90f, 0.65f)
+                );
 
-                ourShader.setFloat(base + ".constant", 1.0f);
-                ourShader.setFloat(base + ".linear", 0.14f);
-                ourShader.setFloat(base + ".quadratic", 0.07f);
+                ourShader.setFloat(
+                    base + ".constant",
+                    1.0f
+                );
+
+                ourShader.setFloat(
+                    base + ".linear",
+                    0.14f
+                );
+
+                ourShader.setFloat(
+                    base + ".quadratic",
+                    0.07f
+                );
 
                 lightIndex++;
             }
         }
 
-
-        // view/projection transformations
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
-        glm::mat4 view = camera.GetViewMatrix();
-        ourShader.setMat4("projection", projection);
-        ourShader.setMat4("view", view);
-
-        // render the loaded model
-        /*glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f)); // translate it down so it's at the center of the scene
-        model = glm::scale(model, glm::vec3(1.0f, 1.0f, 1.0f));	// it's a bit too big for our scene, so scale it down
-        ourShader.setMat4("model", model);
-        parkingModel.Draw(ourShader);*/
-
-        // renderizar el estacionamiento
+        // ============================================
+        // 8. RENDERIZAR EL ESTACIONAMIENTO
+        // ============================================
         glm::mat4 parking = glm::mat4(1.0f);
-        parking = glm::translate(parking,glm::vec3(0.0f, 0.0f, 0.0f));
-        parking = glm::scale(parking,glm::vec3(1.0f, 1.0f, 1.0f));
+
+        parking = glm::translate(
+            parking,
+            glm::vec3(0.0f, 0.0f, 0.0f)
+        );
+
+        parking = glm::scale(
+            parking,
+            glm::vec3(1.0f)
+        );
 
         ourShader.setMat4("model", parking);
         parkingModel.Draw(ourShader);
 
+        // ============================================
+        // 9. RENDERIZAR LAS CALLES / SUELO
+        // ============================================
+        glm::mat4 floor = glm::mat4(1.0f);
 
+        floor = glm::translate(
+            floor,
+            glm::vec3(0.0f, 0.0f, 67.9f)
+        );
+
+        floor = glm::scale(
+            floor,
+            glm::vec3(1.0f)
+        );
+
+        ourShader.setMat4("model", floor);
+        streetModel.Draw(ourShader);
+
+        // ============================================
+        // 10. RENDERIZAR LAS LÁMPARAS
+        // ============================================
         for (int i = 0; i < lampCount; i++)
         {
             glm::mat4 lamp = glm::mat4(1.0f);
 
-            lamp = glm::translate(lamp, lampPositions[i]);
-            lamp = glm::scale(lamp, glm::vec3(1.0f));
+            lamp = glm::translate(
+                lamp,
+                lampPositions[i]
+            );
+
+            lamp = glm::scale(
+                lamp,
+                glm::vec3(1.0f)
+            );
 
             ourShader.setMat4("model", lamp);
             lightModel.Draw(ourShader);
         }
 
-        // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
-        // -------------------------------------------------------------------------------
+        // ============================================
+        // 11. MOSTRAR EL FOTOGRAMA
+        // ============================================
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
