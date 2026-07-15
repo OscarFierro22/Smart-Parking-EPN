@@ -72,6 +72,7 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <IncludePath>$(SolutionDir)OpenGL_Stuff\include;$(IncludePath)</IncludePath>
+    <LocalDebuggerWorkingDirectory>$(ProjectDir)</LocalDebuggerWorkingDirectory>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -115,6 +116,9 @@
       <AdditionalLibraryDirectories>$(SolutionDir)OpenGL_Stuff\Library;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>opengl32.lib;glfw3.lib;assimp-vc145-mtd.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>copy /Y &quot;$(SolutionDir)OpenGL_Stuff\Library\assimp-vc145-mtd.dll&quot; &quot;$(OutDir)assimp-vc145-mtd.dll&quot;</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -136,14 +140,10 @@
     <ClCompile Include="Proyecto_Final.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="floor.fs" />
-    <None Include="floor.vs" />
-    <None Include="procedual_sky.fs" />
-    <None Include="procedual_sky.vs" />
+    <None Include="shaders\floor.fs" />
+    <None Include="shaders\floor.vs" />
     <None Include="shaders\night_sky.fs" />
     <None Include="shaders\night_sky.vs" />
-    <None Include="shaders\shader_exercise16_mloading.fs" />
-    <None Include="shaders\shader_exercise16_mloading.vs" />
     <None Include="shaders\shader_project_mloading.fs" />
     <None Include="shaders\shader_project_mloading.vs" />
   </ItemGroup>

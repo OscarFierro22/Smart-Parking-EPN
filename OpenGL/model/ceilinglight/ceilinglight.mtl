@@ -1,3 +1,4 @@
+# Texturas desactivadas: el shader principal usa colores Kd/Ks del material.
 # Blender 5.1.2 MTL File: 'None'
 # www.blender.org
 
@@ -9,8 +10,6 @@ Ke 0.000000 0.000000 0.000000
 Ni 1.500000
 d 1.000000
 illum 2
-map_Kd C:/CuttingMetal_MATSG_baseColor.jpeg
-map_Bump -bm 1.000000 C:/CuttingMetal_MATSG_normal.png
 
 newmtl aiStandardSurface6SG
 Ns 250.000000
@@ -20,8 +19,6 @@ Ke 0.000000 0.000000 0.000000
 Ni 1.500000
 d 1.000000
 illum 2
-map_Kd C:/aiStandardSurface6SG_baseColor.jpeg
-map_Bump -bm 1.000000 C:/aiStandardSurface6SG_normal.png
 
 newmtl aiStandardSurface8SG
 Ns 250.000000
@@ -31,5 +28,3 @@ Ks 0.500000 0.500000 0.500000
 Ni 1.500000
 d 1.000000
 illum 2
-map_Ke C:/aiStandardSurface8SG_emissive.jpeg
-map_Bump -bm 1.000000 C:/aiStandardSurface8SG_normal.png
