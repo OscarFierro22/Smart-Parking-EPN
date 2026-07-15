@@ -9,6 +9,8 @@
 #include <learnopengl/camera.h>
 #include <learnopengl/model.h>
 
+#include <learnopengl/CollisionMesh.h>
+
 #include <iostream>
 
 #define STB_IMAGE_IMPLEMENTATION 
@@ -19,6 +21,7 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 void processInput(GLFWwindow* window);
+void moveCameraSafely(Camera_Movement direction);
 
 // settings
 const unsigned int SCR_WIDTH = 800;
@@ -40,6 +43,9 @@ bool dayMode = false;
 bool nKeyWasPressed = false;
 float dayFactor = 0.0f; // 0.0 = noche, 1.0 = dia
 
+// Colisión exacta contra los triángulos de parking.obj.
+CollisionMesh parkingCollision;
+
 int main()
 {
     // glfw: initialize and configure
@@ -55,7 +61,7 @@ int main()
 
     // glfw window creation
     // --------------------
-    GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Smart Parking - NOCHE (N cambia modo)", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Smart Parking", NULL, NULL);
     if (window == NULL)
     {
         std::cout << "Failed to create GLFW window" << std::endl;
@@ -98,6 +104,29 @@ int main()
     Model lightModel("model/ceilinglight/ceilinglight.obj");
     Model streetModel("model/street/street.obj");
     Model nightSkyModel("model/night_sky/night_sky.obj");
+
+    // ================================================================
+    // COLISIONES DE LA INFRAESTRUCTURA
+    //
+    // Se carga el mismo OBJ que se dibuja. Por eso las paredes, columnas,
+    // pisos, rampas, barandas y demás piezas sólidas bloquean la cámara.
+    // ================================================================
+    if (!parkingCollision.loadFromObj("model/parking/parking.obj"))
+    {
+        std::cerr
+            << "No se pudo cargar parking.obj para las colisiones.\n";
+    }
+
+    // El piso exterior generado por código también es sólido.
+    parkingCollision.setGroundPlane(-5.30f);
+
+    // El techo está formado por varias piezas y espacios decorativos.
+    // Esta caja sólida impide atravesarlo tanto desde abajo como desde arriba.
+    parkingCollision.addSolidBox(
+        glm::vec3(0.0f, 31.86f, 0.0f),
+        glm::vec3(93.90f, 11.20f, 69.50f)
+    );
+
     //C:/Users/roma9/source/repos/Proyecto_Final_OpenGL/OpenGL/model/parking/parking.obj
     //Model ourModel("model/backpack/backpack.obj");
 
@@ -218,8 +247,8 @@ int main()
     };
 
 
-    const int lampCount =sizeof(lampPositions) /sizeof(lampPositions[0]);
-    const int lightsPerLamp =sizeof(lightOffsets) /sizeof(lightOffsets[0]);
+    const int lampCount = sizeof(lampPositions) / sizeof(lampPositions[0]);
+    const int lightsPerLamp = sizeof(lightOffsets) / sizeof(lightOffsets[0]);
 
     // render loop
     // -----------
@@ -473,6 +502,21 @@ int main()
     return 0;
 }
 
+// Mueve la cámara y después corrige su posición contra toda la malla
+// del parqueadero. La resolución permite deslizarse junto a las paredes.
+void moveCameraSafely(Camera_Movement direction)
+{
+    const glm::vec3 startPosition = camera.Position;
+
+    camera.ProcessKeyboard(direction, deltaTime);
+
+    const glm::vec3 desiredPosition = camera.Position;
+    camera.Position = parkingCollision.moveCamera(
+        startPosition,
+        desiredPosition
+    );
+}
+
 // process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
 // ---------------------------------------------------------------------------------------------------------
 void processInput(GLFWwindow* window)
@@ -509,13 +553,13 @@ void processInput(GLFWwindow* window)
     nKeyWasPressed = nKeyIsPressed;
 
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-        camera.ProcessKeyboard(FORWARD, deltaTime);
+        moveCameraSafely(FORWARD);
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-        camera.ProcessKeyboard(BACKWARD, deltaTime);
+        moveCameraSafely(BACKWARD);
     if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-        camera.ProcessKeyboard(LEFT, deltaTime);
+        moveCameraSafely(LEFT);
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-        camera.ProcessKeyboard(RIGHT, deltaTime);
+        moveCameraSafely(RIGHT);
 }
 
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes

@@ -14,28 +14,28 @@ using namespace std;
 
 struct Vertex {
     // position
-    glm::vec3 Position;
+    glm::vec3 Position{0.0f};
     // normal
-    glm::vec3 Normal;
+    glm::vec3 Normal{0.0f};
     // texCoords
-    glm::vec2 TexCoords;
+    glm::vec2 TexCoords{0.0f};
     // tangent
-    glm::vec3 Tangent;
+    glm::vec3 Tangent{0.0f};
     // bitangent
-    glm::vec3 Bitangent;
+    glm::vec3 Bitangent{0.0f};
 };
 
 struct Texture {
-    unsigned int id;
+    unsigned int id = 0;
     string type;
     string path;
 };
 
 struct MeshMaterial
 {
-    glm::vec3 diffuse;
-    glm::vec3 specular;
-    float shininess;
+    glm::vec3 diffuse{0.5f};
+    glm::vec3 specular{0.5f};
+    float shininess = 32.0f;
 };
 
 class Mesh {
