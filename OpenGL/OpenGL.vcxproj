@@ -132,10 +132,14 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\..\..\Downloads\Jorge\GLFW\glad\src\glad.c" />
+    <ClCompile Include="..\OpenGL_Stuff\Library\glad.c" />
     <ClCompile Include="Proyecto_Final.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="floor.fs" />
+    <None Include="floor.vs" />
+    <None Include="procedual_sky.fs" />
+    <None Include="procedual_sky.vs" />
     <None Include="shaders\night_sky.fs" />
     <None Include="shaders\night_sky.vs" />
     <None Include="shaders\shader_exercise16_mloading.fs" />

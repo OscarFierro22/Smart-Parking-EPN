@@ -21,10 +21,10 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\..\..\Downloads\Jorge\GLFW\glad\src\glad.c">
+    <ClCompile Include="Proyecto_Final.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Proyecto_Final.cpp">
+    <ClCompile Include="..\OpenGL_Stuff\Library\glad.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -45,6 +45,18 @@
       <Filter>Source Files\shaders</Filter>
     </None>
     <None Include="shaders\night_sky.fs">
+      <Filter>Source Files\shaders</Filter>
+    </None>
+    <None Include="procedual_sky.fs">
+      <Filter>Source Files\shaders</Filter>
+    </None>
+    <None Include="procedual_sky.vs">
+      <Filter>Source Files\shaders</Filter>
+    </None>
+    <None Include="floor.fs">
+      <Filter>Source Files\shaders</Filter>
+    </None>
+    <None Include="floor.vs">
       <Filter>Source Files\shaders</Filter>
     </None>
   </ItemGroup>

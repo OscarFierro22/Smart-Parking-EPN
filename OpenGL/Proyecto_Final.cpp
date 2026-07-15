@@ -21,11 +21,11 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 void processInput(GLFWwindow* window);
 
 // settings
-const unsigned int SCR_WIDTH = 800;
-const unsigned int SCR_HEIGHT = 600;
+const unsigned int SCR_WIDTH = 1280;
+const unsigned int SCR_HEIGHT = 720;
 
 // camera
-Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
+Camera camera(glm::vec3(0.0f, 8.0f, 95.0f));
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
@@ -33,6 +33,17 @@ bool firstMouse = true;
 // timing
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
+
+// Control del ciclo día/noche
+bool dayMode = true;
+float dayFactor = 1.0f;
+
+// Evita que N cambie muchas veces mientras se mantiene presionada
+bool nKeyWasDown = false;
+
+// Dimensiones reales del framebuffer
+int framebufferWidth = static_cast<int>(SCR_WIDTH);
+int framebufferHeight = static_cast<int>(SCR_HEIGHT);
 
 int main()
 {
@@ -53,6 +64,7 @@ int main()
     if (window == NULL)
     {
         std::cout << "Failed to create GLFW window" << std::endl;
+
         glfwTerminate();
         return -1;
     }
@@ -72,17 +84,37 @@ int main()
         return -1;
     }
 
+    glfwGetFramebufferSize(window, &framebufferWidth, &framebufferHeight);
+    glViewport(0, 0, framebufferWidth, framebufferHeight);
+
     // tell stb_image.h to flip loaded texture's on the y-axis (before loading model).
     stbi_set_flip_vertically_on_load(true);
 
     // configure global opengl state
     // -----------------------------
     glEnable(GL_DEPTH_TEST);
+    glEnable(GL_CULL_FACE);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     // build and compile shaders
+    // 
     // -------------------------
-    Shader ourShader("shaders/shader_project_mloading.vs", "shaders/shader_project_mloading.fs");
-    Shader nightSkyShader("shaders/night_sky.vs","shaders/night_sky.fs");
+    Shader ourShader(
+        "shaders/shader_project_mloading.vs",
+        "shaders/shader_project_mloading.fs"
+    );
+
+    Shader skyShader(
+        "shaders/procedural_sky.vs",
+        "shaders/procedural_sky.fs"
+    );
+
+    Shader floorShader(
+        "shaders/floor.vs",
+        "shaders/floor.fs"
+    );
+
 
     // load models
     // -----------
@@ -90,11 +122,65 @@ int main()
     Model parkingModel("model/parking/parking.obj");
     Model lightModel("model/ceilinglight/ceilinglight.obj");
     Model streetModel("model/street/street.obj");
-    Model nightSkyModel("model/night_sky/night_sky.obj");
+
     //C:/Users/roma9/source/repos/Proyecto_Final_OpenGL/OpenGL/model/parking/parking.obj
     //Model ourModel("model/backpack/backpack.obj");
 
-    camera.MovementSpeed = 30; //Optional. Modify the speed of the camera
+    camera.MovementSpeed = 30.0f; //Optional. Modify the speed of the camera
+    // =====================================================
+// GEOMETRÍA DEL PISO PROCEDURAL
+// =====================================================
+
+// Plano de 2 x 2 unidades.
+// Después será escalado hasta 1000 x 1000.
+    const float floorVertices[] = {
+        -1.0f, 0.0f, -1.0f,
+         1.0f, 0.0f,  1.0f,
+         1.0f, 0.0f, -1.0f,
+
+        -1.0f, 0.0f, -1.0f,
+        -1.0f, 0.0f,  1.0f,
+         1.0f, 0.0f,  1.0f
+    };
+
+    unsigned int floorVAO = 0;
+    unsigned int floorVBO = 0;
+
+    glGenVertexArrays(1, &floorVAO);
+    glGenBuffers(1, &floorVBO);
+
+    glBindVertexArray(floorVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, floorVBO);
+
+    glBufferData(
+        GL_ARRAY_BUFFER,
+        sizeof(floorVertices),
+        floorVertices,
+        GL_STATIC_DRAW
+    );
+
+    glEnableVertexAttribArray(0);
+
+    glVertexAttribPointer(
+        0,
+        3,
+        GL_FLOAT,
+        GL_FALSE,
+        3 * sizeof(float),
+        nullptr
+    );
+
+    glBindVertexArray(0);
+
+
+    // =====================================================
+    // VAO DEL CIELO PROCEDURAL
+    // =====================================================
+
+    // El shader crea los tres vértices usando gl_VertexID.
+    // No requiere VBO.
+    unsigned int skyVAO = 0;
+    glGenVertexArrays(1, &skyVAO);
 
     // draw in wireframe
     //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -173,8 +259,8 @@ int main()
     };
 
 
-    const int lampCount =sizeof(lampPositions) /sizeof(lampPositions[0]);
-    const int lightsPerLamp =sizeof(lightOffsets) /sizeof(lightOffsets[0]);
+    const int lampCount = sizeof(lampPositions) / sizeof(lampPositions[0]);
+    const int lightsPerLamp = sizeof(lightOffsets) / sizeof(lightOffsets[0]);
 
     // render loop
     // -----------
@@ -191,177 +277,178 @@ int main()
         // 2. ENTRADA DE TECLADO Y CÁMARA
         // ============================================
         processInput(window);
+        // =====================================================
+// TRANSICIÓN SUAVE ENTRE DÍA Y NOCHE
+// =====================================================
+
+        const float targetDayFactor = dayMode ? 1.0f : 0.0f;
+        const float transitionSpeed = 0.75f * deltaTime;
+
+        if (dayFactor < targetDayFactor)
+        {
+            dayFactor += transitionSpeed;
+
+            if (dayFactor > targetDayFactor)
+                dayFactor = targetDayFactor;
+        }
+        else if (dayFactor > targetDayFactor)
+        {
+            dayFactor -= transitionSpeed;
+
+            if (dayFactor < targetDayFactor)
+                dayFactor = targetDayFactor;
+        }
 
         // ============================================
         // 3. LIMPIAR PANTALLA
         // ============================================
-        glClearColor(0.005f, 0.008f, 0.020f, 1.0f);
+        const glm::vec3 nightClear(0.002f, 0.004f, 0.012f);
+        const glm::vec3 dayClear(0.45f, 0.70f, 0.95f);
+        const glm::vec3 clearColor = glm::mix(nightClear, dayClear, dayFactor);
+
+        glClearColor(clearColor.r, clearColor.g, clearColor.b, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         // ============================================
         // 4. MATRICES DE CÁMARA
         // ============================================
+        const float aspect =
+            framebufferHeight > 0
+            ? static_cast<float>(framebufferWidth) /
+            static_cast<float>(framebufferHeight)
+            : 1.0f;
+
         glm::mat4 projection = glm::perspective(
             glm::radians(camera.Zoom),
-            static_cast<float>(SCR_WIDTH) /
-            static_cast<float>(SCR_HEIGHT),
-            0.1f,
+            aspect,
+            0.03f,
             5000.0f
         );
 
         glm::mat4 view = camera.GetViewMatrix();
 
-        // ============================================
-        // RENDERIZAR EL CIELO NOCTURNO
-        // ============================================
-        glDepthFunc(GL_LEQUAL);
-        glDepthMask(GL_FALSE);
+        // =====================================================
+        // 5. RENDERIZAR EL CIELO PROCEDURAL
+        // =====================================================
+        // El cielo se dibuja primero, sin prueba de profundidad.
+        glDisable(GL_DEPTH_TEST);
         glDisable(GL_CULL_FACE);
 
-        nightSkyShader.use();
+        skyShader.use();
+        skyShader.setMat4("inverseProjection", glm::inverse(projection));
 
-        // Conserva la rotación de la cámara,
-        // pero elimina su desplazamiento.
-        glm::mat4 skyView =
-            glm::mat4(glm::mat3(camera.GetViewMatrix()));
+        // Eliminar la traslación hace que el cielo acompañe la rotación
+        // de la cámara, pero permanezca siempre a una distancia infinita.
+        const glm::mat4 rotationOnlyView = glm::mat4(glm::mat3(view));
+        skyShader.setMat4("inverseView", glm::inverse(rotationOnlyView));
+        skyShader.setFloat("dayFactor", dayFactor);
+        skyShader.setFloat("timeSeconds", currentFrame);
 
-        nightSkyShader.setMat4("projection", projection);
-        nightSkyShader.setMat4("view", skyView);
+        glBindVertexArray(skyVAO);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+        glBindVertexArray(0);
 
-        glm::mat4 nightSky = glm::mat4(1.0f);
-
-        // Prueba inicialmente con 20, no con 300.
-        nightSky = glm::scale(
-            nightSky,
-            glm::vec3(20.0f)
-        );
-
-        nightSkyShader.setMat4("model", nightSky);
-        nightSkyModel.Draw(nightSkyShader);
-
-        // Restaurar estados de OpenGL
-        glDepthMask(GL_TRUE);
-        glDepthFunc(GL_LESS);
+        glEnable(GL_DEPTH_TEST);
         glEnable(GL_CULL_FACE);
 
-        // ============================================
-        // 6. ACTIVAR SHADER PRINCIPAL
-        // ============================================
-        ourShader.use();
+        // =====================================================
+        // 6. RENDERIZAR EL PISO PROCEDURAL
+        // =====================================================
+        floorShader.use();
+        floorShader.setMat4("projection", projection);
+        floorShader.setMat4("view", view);
+        floorShader.setVec3(
+            "floorColor",
+            glm::mix(
+                glm::vec3(0.035f, 0.040f, 0.047f),
+                glm::vec3(0.17f, 0.18f, 0.19f),
+                dayFactor
+            )
+        );
 
+        glm::mat4 ground(1.0f);
+        ground = glm::translate(ground, glm::vec3(0.0f, -5.30f, 0.0f));
+        ground = glm::scale(ground, glm::vec3(1000.0f, 1.0f, 1000.0f));
+        floorShader.setMat4("model", ground);
+
+        glBindVertexArray(floorVAO);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glBindVertexArray(0);
+
+        // =====================================================
+        // 7. VOLVER A ACTIVAR EL SHADER DE LOS MODELOS
+        // =====================================================
+        // Este use() es indispensable. floorShader era el shader activo.
+        ourShader.use();
         ourShader.setMat4("projection", projection);
         ourShader.setMat4("view", view);
         ourShader.setVec3("viewPos", camera.Position);
 
-        // ============================================
-        // 7. CONFIGURAR LAS LUCES DE LAS LÁMPARAS
-        // ============================================
+        // Es compatible con la versión final del shader. Si el uniform no
+        // existe todavía, OpenGL ignora la asignación con ubicación -1.
+        ourShader.setFloat("dayFactor", dayFactor);
+
+        // =====================================================
+        // 8. CONFIGURAR LAS LUCES DE LAS LÁMPARAS
+        // =====================================================
         int lightIndex = 0;
 
-        for (int i = 0; i < lampCount; i++)
+        for (int i = 0; i < lampCount; ++i)
         {
-            for (int j = 0; j < lightsPerLamp; j++)
+            for (int j = 0; j < lightsPerLamp; ++j)
             {
-                glm::vec3 currentLightPosition =
+                const glm::vec3 currentLightPosition =
                     lampPositions[i] + lightOffsets[j];
 
-                std::string base =
-                    "pointLights[" +
-                    std::to_string(lightIndex) +
-                    "]";
+                const std::string base =
+                    "pointLights[" + std::to_string(lightIndex) + "]";
 
-                ourShader.setVec3(
-                    base + ".position",
-                    currentLightPosition
-                );
-
+                ourShader.setVec3(base + ".position", currentLightPosition);
                 ourShader.setVec3(
                     base + ".ambient",
                     glm::vec3(0.01f, 0.01f, 0.015f)
                 );
-
                 ourShader.setVec3(
                     base + ".diffuse",
                     glm::vec3(1.0f, 0.85f, 0.55f)
                 );
-
                 ourShader.setVec3(
                     base + ".specular",
                     glm::vec3(1.0f, 0.90f, 0.65f)
                 );
+                ourShader.setFloat(base + ".constant", 1.0f);
+                ourShader.setFloat(base + ".linear", 0.14f);
+                ourShader.setFloat(base + ".quadratic", 0.07f);
 
-                ourShader.setFloat(
-                    base + ".constant",
-                    1.0f
-                );
-
-                ourShader.setFloat(
-                    base + ".linear",
-                    0.14f
-                );
-
-                ourShader.setFloat(
-                    base + ".quadratic",
-                    0.07f
-                );
-
-                lightIndex++;
+                ++lightIndex;
             }
         }
 
-        // ============================================
-        // 8. RENDERIZAR EL ESTACIONAMIENTO
-        // ============================================
-        glm::mat4 parking = glm::mat4(1.0f);
-
-        parking = glm::translate(
-            parking,
-            glm::vec3(0.0f, 0.0f, 0.0f)
-        );
-
-        parking = glm::scale(
-            parking,
-            glm::vec3(1.0f)
-        );
-
+        // =====================================================
+        // 9. RENDERIZAR EL ESTACIONAMIENTO
+        // =====================================================
+        glm::mat4 parking(1.0f);
         ourShader.setMat4("model", parking);
         parkingModel.Draw(ourShader);
 
-        // ============================================
-        // 9. RENDERIZAR LAS CALLES / SUELO
-        // ============================================
-        glm::mat4 floor = glm::mat4(1.0f);
-
-        floor = glm::translate(
-            floor,
+        // =====================================================
+        // 10. RENDERIZAR LAS CALLES
+        // =====================================================
+        glm::mat4 streetMatrix(1.0f);
+        streetMatrix = glm::translate(
+            streetMatrix,
             glm::vec3(0.0f, 0.0f, 67.9f)
         );
-
-        floor = glm::scale(
-            floor,
-            glm::vec3(1.0f)
-        );
-
-        ourShader.setMat4("model", floor);
+        ourShader.setMat4("model", streetMatrix);
         streetModel.Draw(ourShader);
 
-        // ============================================
-        // 10. RENDERIZAR LAS LÁMPARAS
-        // ============================================
-        for (int i = 0; i < lampCount; i++)
+        // =====================================================
+        // 11. RENDERIZAR LAS LÁMPARAS
+        // =====================================================
+        for (int i = 0; i < lampCount; ++i)
         {
-            glm::mat4 lamp = glm::mat4(1.0f);
-
-            lamp = glm::translate(
-                lamp,
-                lampPositions[i]
-            );
-
-            lamp = glm::scale(
-                lamp,
-                glm::vec3(1.0f)
-            );
-
+            glm::mat4 lamp(1.0f);
+            lamp = glm::translate(lamp, lampPositions[i]);
             ourShader.setMat4("model", lamp);
             lightModel.Draw(ourShader);
         }
@@ -372,9 +459,11 @@ int main()
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
+    glDeleteVertexArrays(1, &floorVAO);
+    glDeleteBuffers(1, &floorVBO);
 
-    // glfw: terminate, clearing all previously allocated GLFW resources.
-    // ------------------------------------------------------------------
+    glDeleteVertexArrays(1, &skyVAO);
+
     glfwTerminate();
     return 0;
 }
@@ -386,6 +475,21 @@ void processInput(GLFWwindow* window)
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
 
+    const bool nKeyIsDown =
+        glfwGetKey(window, GLFW_KEY_N) == GLFW_PRESS;
+
+    if (nKeyIsDown && !nKeyWasDown)
+    {
+        dayMode = !dayMode;
+
+        std::cout
+            << (dayMode
+                ? "Modo dia activado\n"
+                : "Modo noche activado\n");
+    }
+
+    nKeyWasDown = nKeyIsDown;
+
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
         camera.ProcessKeyboard(FORWARD, deltaTime);
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
@@ -396,12 +500,15 @@ void processInput(GLFWwindow* window)
         camera.ProcessKeyboard(RIGHT, deltaTime);
 }
 
-// glfw: whenever the window size changed (by OS or user resize) this callback function executes
-// ---------------------------------------------------------------------------------------------
-void framebuffer_size_callback(GLFWwindow* window, int width, int height)
+void framebuffer_size_callback(
+    GLFWwindow* window,
+    int width,
+    int height
+)
 {
-    // make sure the viewport matches the new window dimensions; note that width and 
-    // height will be significantly larger than specified on retina displays.
+    framebufferWidth = width;
+    framebufferHeight = height;
+
     glViewport(0, 0, width, height);
 }
 
