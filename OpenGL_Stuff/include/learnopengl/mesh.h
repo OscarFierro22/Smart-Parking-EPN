@@ -1,149 +1,438 @@
 #ifndef MESH_H
 #define MESH_H
 
-#include <glad/glad.h> // holds all OpenGL type declarations
+#include <glad/glad.h>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <learnopengl/shader.h>
 
+#include <algorithm>
+#include <cstddef>
 #include <string>
 #include <vector>
+
 using namespace std;
 
-struct Vertex {
-    // position
-    glm::vec3 Position{0.0f};
-    // normal
-    glm::vec3 Normal{0.0f};
-    // texCoords
-    glm::vec2 TexCoords{0.0f};
-    // tangent
-    glm::vec3 Tangent{0.0f};
-    // bitangent
-    glm::vec3 Bitangent{0.0f};
+// =========================================================
+// INFORMACIÓN DE CADA VÉRTICE
+// =========================================================
+
+struct Vertex
+{
+    glm::vec3 Position{ 0.0f };
+    glm::vec3 Normal{ 0.0f };
+    glm::vec2 TexCoords{ 0.0f };
+    glm::vec3 Tangent{ 0.0f };
+    glm::vec3 Bitangent{ 0.0f };
 };
 
-struct Texture {
+// =========================================================
+// INFORMACIÓN DE CADA TEXTURA
+// =========================================================
+
+struct Texture
+{
     unsigned int id = 0;
+
     string type;
     string path;
 };
 
+// =========================================================
+// INFORMACIÓN DEL MATERIAL LEÍDO DESDE EL ARCHIVO MTL
+// =========================================================
+
 struct MeshMaterial
 {
-    glm::vec3 diffuse{0.5f};
-    glm::vec3 specular{0.5f};
+    // Color difuso del material.
+    glm::vec3 diffuse{ 0.5f };
+
+    // Color especular del material.
+    glm::vec3 specular{ 0.5f };
+
+    // Brillo Ns definido en el archivo MTL.
     float shininess = 32.0f;
+
+    // Opacidad del material.
+    // 1.0 = opaco.
+    // 0.0 = completamente transparente.
+    float opacity = 1.0f;
+
+    // Nombre del material leído desde el archivo MTL.
+    string name;
+
+    // Indica si se aplicará un tratamiento metálico.
+    bool metallic = false;
+
+    // Indica si se dibujará en la pasada transparente.
+    bool transparent = false;
 };
 
-class Mesh {
-public:
-    // mesh Data
-    vector<Vertex>       vertices;
-    vector<unsigned int> indices;
-    vector<Texture>      textures;
-    MeshMaterial 	 material;
-    unsigned int VAO;
+// =========================================================
+// CLASE MESH
+// =========================================================
 
-    // constructor
-    Mesh(vector<Vertex> vertices, vector<unsigned int> indices, vector<Texture> textures, MeshMaterial material)
+class Mesh
+{
+public:
+
+    // Datos de la malla.
+    vector<Vertex> vertices;
+    vector<unsigned int> indices;
+    vector<Texture> textures;
+
+    MeshMaterial material;
+
+    unsigned int VAO = 0;
+
+    // =====================================================
+    // CONSTRUCTOR
+    // =====================================================
+
+    Mesh(
+        vector<Vertex> vertices,
+        vector<unsigned int> indices,
+        vector<Texture> textures,
+        MeshMaterial material
+    )
     {
         this->vertices = vertices;
         this->indices = indices;
         this->textures = textures;
-	this->material = material;
+        this->material = material;
 
-        // now that we have all the required data, set the vertex buffers and its attribute pointers.
         setupMesh();
     }
 
-    // render the mesh
-    void Draw(Shader &shader) 
+    // =====================================================
+    // DIBUJAR LA MALLA
+    // =====================================================
+
+    void Draw(Shader& shader)
     {
+        // -------------------------------------------------
+        // 1. Enviar las propiedades del material al shader
+        // -------------------------------------------------
 
-	// Enviar al shader los valores obtenidos desde el archivo .mtl
-	shader.setVec3("materialDiffuse", material.diffuse);
-	shader.setVec3("materialSpecular", material.specular);
-	shader.setFloat("materialShininess", material.shininess);	
+        shader.setVec3(
+            "materialDiffuse",
+            material.diffuse
+        );
 
-        // bind appropriate textures
-        unsigned int diffuseNr  = 1;
+        shader.setVec3(
+            "materialSpecular",
+            material.specular
+        );
+
+        shader.setFloat(
+            "materialShininess",
+            std::max(
+                material.shininess,
+                1.0f
+            )
+        );
+
+        shader.setFloat(
+            "materialOpacity",
+            glm::clamp(
+                material.opacity,
+                0.0f,
+                1.0f
+            )
+        );
+
+        shader.setBool(
+            "materialMetallic",
+            material.metallic
+        );
+
+        // -------------------------------------------------
+        // 2. Vincular las texturas
+        // -------------------------------------------------
+
+        unsigned int diffuseNr = 1;
         unsigned int specularNr = 1;
-        unsigned int normalNr   = 1;
-        unsigned int heightNr   = 1;
-        for(unsigned int i = 0; i < textures.size(); i++)
-        {
-            glActiveTexture(GL_TEXTURE0 + i); // active proper texture unit before binding
-            // retrieve texture number (the N in diffuse_textureN)
-            string number;
-            string name = textures[i].type;
-            if(name == "texture_diffuse")
-                number = std::to_string(diffuseNr++);
-            else if(name == "texture_specular")
-                number = std::to_string(specularNr++); // transfer unsigned int to stream
-            else if(name == "texture_normal")
-                number = std::to_string(normalNr++); // transfer unsigned int to stream
-             else if(name == "texture_height")
-                number = std::to_string(heightNr++); // transfer unsigned int to stream
+        unsigned int normalNr = 1;
+        unsigned int heightNr = 1;
 
-            // now set the sampler to the correct texture unit
-            glUniform1i(glGetUniformLocation(shader.ID, (name + number).c_str()), i);
-            // and finally bind the texture
-            glBindTexture(GL_TEXTURE_2D, textures[i].id);
+        for (
+            unsigned int i = 0;
+            i < textures.size();
+            i++
+        )
+        {
+            glActiveTexture(
+                GL_TEXTURE0 + i
+            );
+
+            string number;
+            string textureType = textures[i].type;
+
+            if (
+                textureType ==
+                "texture_diffuse"
+            )
+            {
+                number =
+                    std::to_string(
+                        diffuseNr++
+                    );
+            }
+            else if (
+                textureType ==
+                "texture_specular"
+            )
+            {
+                number =
+                    std::to_string(
+                        specularNr++
+                    );
+            }
+            else if (
+                textureType ==
+                "texture_normal"
+            )
+            {
+                number =
+                    std::to_string(
+                        normalNr++
+                    );
+            }
+            else if (
+                textureType ==
+                "texture_height"
+            )
+            {
+                number =
+                    std::to_string(
+                        heightNr++
+                    );
+            }
+
+            string uniformName =
+                textureType +
+                number;
+
+            glUniform1i(
+                glGetUniformLocation(
+                    shader.ID,
+                    uniformName.c_str()
+                ),
+                static_cast<GLint>(i)
+            );
+
+            glBindTexture(
+                GL_TEXTURE_2D,
+                textures[i].id
+            );
         }
-        
-        // draw mesh
+
+        // -------------------------------------------------
+        // 3. Dibujar la malla
+        // -------------------------------------------------
+
         glBindVertexArray(VAO);
-        glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, 0);
+
+        glDrawElements(
+            GL_TRIANGLES,
+            static_cast<GLsizei>(
+                indices.size()
+            ),
+            GL_UNSIGNED_INT,
+            nullptr
+        );
+
         glBindVertexArray(0);
 
-        // always good practice to set everything back to defaults once configured.
-        glActiveTexture(GL_TEXTURE0);
+        // -------------------------------------------------
+        // 4. Restaurar la unidad de textura
+        // -------------------------------------------------
+
+        glActiveTexture(
+            GL_TEXTURE0
+        );
     }
 
 private:
-    // render data 
-    unsigned int VBO, EBO;
 
-    // initializes all the buffer objects/arrays
+    // Datos de renderizado.
+    unsigned int VBO = 0;
+    unsigned int EBO = 0;
+
+    // =====================================================
+    // CONFIGURAR VAO, VBO Y EBO
+    // =====================================================
+
     void setupMesh()
     {
-        // create buffers/arrays
-        glGenVertexArrays(1, &VAO);
-        glGenBuffers(1, &VBO);
-        glGenBuffers(1, &EBO);
+        glGenVertexArrays(
+            1,
+            &VAO
+        );
+
+        glGenBuffers(
+            1,
+            &VBO
+        );
+
+        glGenBuffers(
+            1,
+            &EBO
+        );
 
         glBindVertexArray(VAO);
-        // load data into vertex buffers
-        glBindBuffer(GL_ARRAY_BUFFER, VBO);
-        // A great thing about structs is that their memory layout is sequential for all its items.
-        // The effect is that we can simply pass a pointer to the struct and it translates perfectly to a glm::vec3/2 array which
-        // again translates to 3/2 floats which translates to a byte array.
-        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex), &vertices[0], GL_STATIC_DRAW);  
 
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);
+        // -------------------------------------------------
+        // Almacenar los vértices en el VBO
+        // -------------------------------------------------
 
-        // set the vertex attribute pointers
-        // vertex Positions
-        glEnableVertexAttribArray(0);	
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
-        // vertex normals
-        glEnableVertexAttribArray(1);	
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Normal));
-        // vertex texture coords
-        glEnableVertexAttribArray(2);	
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
-        // vertex tangent
+        glBindBuffer(
+            GL_ARRAY_BUFFER,
+            VBO
+        );
+
+        glBufferData(
+            GL_ARRAY_BUFFER,
+            static_cast<GLsizeiptr>(
+                vertices.size() *
+                sizeof(Vertex)
+            ),
+            vertices.empty()
+                ? nullptr
+                : vertices.data(),
+            GL_STATIC_DRAW
+        );
+
+        // -------------------------------------------------
+        // Almacenar los índices en el EBO
+        // -------------------------------------------------
+
+        glBindBuffer(
+            GL_ELEMENT_ARRAY_BUFFER,
+            EBO
+        );
+
+        glBufferData(
+            GL_ELEMENT_ARRAY_BUFFER,
+            static_cast<GLsizeiptr>(
+                indices.size() *
+                sizeof(unsigned int)
+            ),
+            indices.empty()
+                ? nullptr
+                : indices.data(),
+            GL_STATIC_DRAW
+        );
+
+        // -------------------------------------------------
+        // Atributo 0: posición
+        // -------------------------------------------------
+
+        glEnableVertexAttribArray(0);
+
+        glVertexAttribPointer(
+            0,
+            3,
+            GL_FLOAT,
+            GL_FALSE,
+            sizeof(Vertex),
+            reinterpret_cast<void*>(
+                offsetof(
+                    Vertex,
+                    Position
+                )
+            )
+        );
+
+        // -------------------------------------------------
+        // Atributo 1: normal
+        // -------------------------------------------------
+
+        glEnableVertexAttribArray(1);
+
+        glVertexAttribPointer(
+            1,
+            3,
+            GL_FLOAT,
+            GL_FALSE,
+            sizeof(Vertex),
+            reinterpret_cast<void*>(
+                offsetof(
+                    Vertex,
+                    Normal
+                )
+            )
+        );
+
+        // -------------------------------------------------
+        // Atributo 2: coordenadas de textura
+        // -------------------------------------------------
+
+        glEnableVertexAttribArray(2);
+
+        glVertexAttribPointer(
+            2,
+            2,
+            GL_FLOAT,
+            GL_FALSE,
+            sizeof(Vertex),
+            reinterpret_cast<void*>(
+                offsetof(
+                    Vertex,
+                    TexCoords
+                )
+            )
+        );
+
+        // -------------------------------------------------
+        // Atributo 3: tangente
+        // -------------------------------------------------
+
         glEnableVertexAttribArray(3);
-        glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Tangent));
-        // vertex bitangent
+
+        glVertexAttribPointer(
+            3,
+            3,
+            GL_FLOAT,
+            GL_FALSE,
+            sizeof(Vertex),
+            reinterpret_cast<void*>(
+                offsetof(
+                    Vertex,
+                    Tangent
+                )
+            )
+        );
+
+        // -------------------------------------------------
+        // Atributo 4: bitangente
+        // -------------------------------------------------
+
         glEnableVertexAttribArray(4);
-        glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Bitangent));
+
+        glVertexAttribPointer(
+            4,
+            3,
+            GL_FLOAT,
+            GL_FALSE,
+            sizeof(Vertex),
+            reinterpret_cast<void*>(
+                offsetof(
+                    Vertex,
+                    Bitangent
+                )
+            )
+        );
 
         glBindVertexArray(0);
+
+        glBindBuffer(
+            GL_ARRAY_BUFFER,
+            0
+        );
     }
 };
+
 #endif

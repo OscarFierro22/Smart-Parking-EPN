@@ -29,22 +29,34 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <None Include="shaders\shader_project_mloading.vs">
-      <Filter>Source Files\shaders</Filter>
-    </None>
-    <None Include="shaders\shader_project_mloading.fs">
+    <None Include="shaders\floor.fs">
       <Filter>Source Files\shaders</Filter>
     </None>
     <None Include="shaders\floor.vs">
       <Filter>Source Files\shaders</Filter>
     </None>
-    <None Include="shaders\floor.fs">
+    <None Include="shaders\night_sky.fs">
       <Filter>Source Files\shaders</Filter>
     </None>
     <None Include="shaders\night_sky.vs">
       <Filter>Source Files\shaders</Filter>
     </None>
-    <None Include="shaders\night_sky.fs">
+    <None Include="shaders\primitive.fs">
+      <Filter>Source Files\shaders</Filter>
+    </None>
+    <None Include="shaders\primitive.vs">
+      <Filter>Source Files\shaders</Filter>
+    </None>
+    <None Include="shaders\shader_project_mloading.fs">
+      <Filter>Source Files\shaders</Filter>
+    </None>
+    <None Include="shaders\shader_project_mloading.vs">
+      <Filter>Source Files\shaders</Filter>
+    </None>
+    <None Include="shaders\ui.fs">
+      <Filter>Source Files\shaders</Filter>
+    </None>
+    <None Include="shaders\ui.vs">
       <Filter>Source Files\shaders</Filter>
     </None>
   </ItemGroup>

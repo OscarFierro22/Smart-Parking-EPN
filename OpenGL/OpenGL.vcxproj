@@ -117,7 +117,7 @@
       <AdditionalDependencies>opengl32.lib;glfw3.lib;assimp-vc145-mtd.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>copy /Y &quot;$(SolutionDir)OpenGL_Stuff\Library\assimp-vc145-mtd.dll&quot; &quot;$(OutDir)assimp-vc145-mtd.dll&quot;</Command>
+      <Command>copy /Y "$(SolutionDir)OpenGL_Stuff\Library\assimp-vc145-mtd.dll" "$(OutDir)assimp-vc145-mtd.dll"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -144,8 +144,12 @@
     <None Include="shaders\floor.vs" />
     <None Include="shaders\night_sky.fs" />
     <None Include="shaders\night_sky.vs" />
+    <None Include="shaders\primitive.fs" />
+    <None Include="shaders\primitive.vs" />
     <None Include="shaders\shader_project_mloading.fs" />
     <None Include="shaders\shader_project_mloading.vs" />
+    <None Include="shaders\ui.fs" />
+    <None Include="shaders\ui.vs" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
