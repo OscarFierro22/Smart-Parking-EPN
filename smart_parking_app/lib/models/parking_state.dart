@@ -29,6 +29,10 @@ class ParkingSlot {
     required this.row,
     required this.number,
     required this.status,
+    required this.x,
+    required this.y,
+    required this.z,
+    required this.carType,
   });
 
   final String id;
@@ -37,6 +41,10 @@ class ParkingSlot {
   final String row;
   final int number;
   final SlotStatus status;
+  final double x;
+  final double y;
+  final double z;
+  final int carType;
 
   factory ParkingSlot.fromJson(Map<String, dynamic> json) {
     return ParkingSlot(
@@ -46,6 +54,10 @@ class ParkingSlot {
       row: json['row']?.toString() ?? '',
       number: (json['number'] as num?)?.toInt() ?? 0,
       status: SlotStatus.fromApi(json['state']?.toString() ?? ''),
+      x: (json['x'] as num?)?.toDouble() ?? 0,
+      y: (json['y'] as num?)?.toDouble() ?? 0,
+      z: (json['z'] as num?)?.toDouble() ?? 0,
+      carType: (json['car_type'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -87,6 +99,103 @@ class ParkingFloor {
   }
 }
 
+class VehicleState {
+  const VehicleState({
+    required this.x,
+    required this.y,
+    required this.z,
+    required this.floor,
+    required this.floorName,
+    required this.headingDegrees,
+    required this.speedKmh,
+    required this.parkedSlotId,
+  });
+
+  final double x;
+  final double y;
+  final double z;
+  final int floor;
+  final String floorName;
+  final double headingDegrees;
+  final double speedKmh;
+  final String parkedSlotId;
+
+  factory VehicleState.fromJson(Map<String, dynamic> json) {
+    return VehicleState(
+      x: (json['x'] as num?)?.toDouble() ?? 0,
+      y: (json['y'] as num?)?.toDouble() ?? 0,
+      z: (json['z'] as num?)?.toDouble() ?? 0,
+      floor: (json['floor'] as num?)?.toInt() ?? -1,
+      floorName: json['floor_name']?.toString() ?? 'Calle',
+      headingDegrees:
+          (json['heading_degrees'] as num?)?.toDouble() ?? 0,
+      speedKmh: (json['speed_kmh'] as num?)?.toDouble() ?? 0,
+      parkedSlotId: json['parked_slot_id']?.toString() ?? '',
+    );
+  }
+}
+
+class RoutePoint {
+  const RoutePoint({
+    required this.x,
+    required this.y,
+    required this.z,
+    required this.floor,
+  });
+
+  final double x;
+  final double y;
+  final double z;
+  final int floor;
+
+  factory RoutePoint.fromJson(Map<String, dynamic> json) {
+    return RoutePoint(
+      x: (json['x'] as num?)?.toDouble() ?? 0,
+      y: (json['y'] as num?)?.toDouble() ?? 0,
+      z: (json['z'] as num?)?.toDouble() ?? 0,
+      floor: (json['floor'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+class NavigationState {
+  const NavigationState({
+    required this.active,
+    required this.type,
+    required this.destination,
+    required this.destinationFloor,
+    required this.distanceRemaining,
+    required this.instruction,
+    required this.route,
+  });
+
+  final bool active;
+  final String type;
+  final String destination;
+  final int destinationFloor;
+  final double distanceRemaining;
+  final String instruction;
+  final List<RoutePoint> route;
+
+  factory NavigationState.fromJson(Map<String, dynamic> json) {
+    final rawRoute = json['route'] as List<dynamic>? ?? const [];
+    return NavigationState(
+      active: json['active'] == true,
+      type: json['type']?.toString() ?? 'NONE',
+      destination: json['destination']?.toString() ?? '',
+      destinationFloor:
+          (json['destination_floor'] as num?)?.toInt() ?? 0,
+      distanceRemaining:
+          (json['distance_remaining'] as num?)?.toDouble() ?? 0,
+      instruction: json['instruction']?.toString() ?? 'Sin ruta activa',
+      route: rawRoute
+          .whereType<Map<String, dynamic>>()
+          .map(RoutePoint.fromJson)
+          .toList(growable: false),
+    );
+  }
+}
+
 class ParkingState {
   const ParkingState({
     required this.version,
@@ -101,6 +210,8 @@ class ParkingState {
     required this.reservedSlotId,
     required this.selectedSlotId,
     required this.lastCommandId,
+    required this.vehicle,
+    required this.navigation,
     required this.floors,
     required this.slots,
     required this.waitingForOpenGL,
@@ -118,15 +229,19 @@ class ParkingState {
   final String reservedSlotId;
   final String selectedSlotId;
   final String lastCommandId;
+  final VehicleState vehicle;
+  final NavigationState navigation;
   final List<ParkingFloor> floors;
   final List<ParkingSlot> slots;
   final bool waitingForOpenGL;
 
   factory ParkingState.fromJson(Map<String, dynamic> json) {
     int readInt(String key) => (json[key] as num?)?.toInt() ?? 0;
-
-    final floorJson = (json['floors'] as List<dynamic>? ?? const []);
-    final slotJson = (json['slots'] as List<dynamic>? ?? const []);
+    final floorJson = json['floors'] as List<dynamic>? ?? const [];
+    final slotJson = json['slots'] as List<dynamic>? ?? const [];
+    final vehicleJson = json['vehicle'] as Map<String, dynamic>? ?? const {};
+    final navigationJson =
+        json['navigation'] as Map<String, dynamic>? ?? const {};
 
     return ParkingState(
       version: readInt('version'),
@@ -141,6 +256,8 @@ class ParkingState {
       reservedSlotId: json['reserved_slot_id']?.toString() ?? '',
       selectedSlotId: json['selected_slot_id']?.toString() ?? '',
       lastCommandId: json['last_command_id']?.toString() ?? '',
+      vehicle: VehicleState.fromJson(vehicleJson),
+      navigation: NavigationState.fromJson(navigationJson),
       floors: floorJson
           .whereType<Map<String, dynamic>>()
           .map(ParkingFloor.fromJson)

@@ -1,0 +1,28 @@
+SMART PARKING - SALIDA CENTRADA Y COLISIONES
+
+1. SALIDA CENTRADA
+   - Centro de la puerta: X=12.45, Z=47.0.
+   - El nodo final, círculo de misión, flechas y detección usan el mismo punto.
+
+2. COLISIONES
+   - Muros centrales, separadores de rampas y barreras existentes.
+   - Límites oeste, este, sur y norte de cada piso.
+   - En planta baja, el frente queda abierto solamente entre X=1.55 y X=23.35.
+   - Dos paredes invisibles forman el canal de entrada/salida.
+   - Los pisos 1, 2 y 3 están cerrados en todo su perímetro.
+   - Movimiento del carro dividido en subpasos para evitar atravesar paredes a velocidad alta.
+   - Resolución separada en X/Z para permitir deslizarse junto a los muros.
+
+ARCHIVOS MODIFICADOS
+- OpenGL/Proyecto_Final.cpp
+- OpenGL/Vehicle/Vehicle.h
+- OpenGL/Vehicle/Vehicle.cpp
+- OpenGL_Stuff/include/learnopengl/model.h
+- OpenGL_Stuff/include/learnopengl/mesh.h
+
+PRUEBA
+- Abrir OpenGL.sln
+- Seleccionar Debug | x64
+- Limpiar y recompilar solución
+- Usar E para ruta a la salida
+- Intentar atravesar paredes y bordes con WASD

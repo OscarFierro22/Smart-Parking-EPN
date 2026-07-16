@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Filter Include="Source Files">
@@ -20,7 +20,7 @@
       <UniqueIdentifier>{9eb76014-5298-4e5f-b1a3-e520f78fee16}</UniqueIdentifier>
     </Filter>
     <Filter Include="Vehicle">
-      <UniqueIdentifier>{c8e0af35-1d3f-449e-b04b-f960de1b46f3}</UniqueIdentifier>
+      <UniqueIdentifier>{7a2086c1-69b9-4e5b-95d4-99977535b48b}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -38,34 +38,28 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <None Include="shaders\floor.fs">
-      <Filter>Source Files\shaders</Filter>
-    </None>
-    <None Include="shaders\floor.vs">
-      <Filter>Source Files\shaders</Filter>
-    </None>
-    <None Include="shaders\night_sky.fs">
-      <Filter>Source Files\shaders</Filter>
-    </None>
-    <None Include="shaders\night_sky.vs">
-      <Filter>Source Files\shaders</Filter>
-    </None>
-    <None Include="shaders\primitive.fs">
-      <Filter>Source Files\shaders</Filter>
-    </None>
-    <None Include="shaders\primitive.vs">
+    <None Include="shaders\shader_project_mloading.vs">
       <Filter>Source Files\shaders</Filter>
     </None>
     <None Include="shaders\shader_project_mloading.fs">
       <Filter>Source Files\shaders</Filter>
     </None>
-    <None Include="shaders\shader_project_mloading.vs">
+    <None Include="shaders\floor.vs">
       <Filter>Source Files\shaders</Filter>
     </None>
-    <None Include="shaders\ui.fs">
+    <None Include="shaders\floor.fs">
+      <Filter>Source Files\shaders</Filter>
+    </None>
+    <None Include="shaders\primitive.vs">
+      <Filter>Source Files\shaders</Filter>
+    </None>
+    <None Include="shaders\primitive.fs">
       <Filter>Source Files\shaders</Filter>
     </None>
     <None Include="shaders\ui.vs">
+      <Filter>Source Files\shaders</Filter>
+    </None>
+    <None Include="shaders\ui.fs">
       <Filter>Source Files\shaders</Filter>
     </None>
   </ItemGroup>

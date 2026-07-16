@@ -8,7 +8,6 @@
 #include <learnopengl/shader.h>
 #include <learnopengl/camera.h>
 #include <learnopengl/model.h>
-#include <learnopengl/CollisionMesh.h>
 
 #include "Vehicle/Vehicle.h"
 
@@ -37,6 +36,15 @@
 
 namespace fs = std::filesystem;
 
+#if defined(_WIN32)
+extern "C"
+{
+    // Solicita la GPU dedicada de alto rendimiento en equipos NVIDIA/AMD.
+    __declspec(dllexport) unsigned long NvOptimusEnablement = 0x00000001;
+    __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+}
+#endif
+
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
@@ -59,9 +67,6 @@ float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
 
-// Colision exacta contra la geometria real de parking.obj.
-CollisionMesh parkingCollision;
-
 // =========================================================
 // VEHÍCULO Y CÁMARAS INTEGRADAS
 // =========================================================
@@ -72,7 +77,7 @@ enum class CameraMode
     DRIVER = 3
 };
 
-CameraMode cameraMode = CameraMode::FREE;
+CameraMode cameraMode = CameraMode::THIRD_PERSON;
 
 float thirdPersonYawOffset = 0.0f;
 float thirdPersonPitchOffset = 0.0f;
@@ -97,8 +102,8 @@ Vehicle* controlledVehicle = nullptr;
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
-bool dayMode = true;
-float dayFactor = 1.0f;
+bool dayMode = false;
+float dayFactor = 0.0f;
 bool phoneVisible = true;
 bool keyWasDown[GLFW_KEY_LAST + 1]{};
 
@@ -180,11 +185,20 @@ struct CollisionBox
     std::string name;
 };
 
+struct ScenePointLight
+{
+    glm::vec3 position;
+    glm::vec3 color;
+    float linear;
+    float quadratic;
+};
+
 std::vector<ParkingSlot> parkingSlots;
 ParkingGraph parkingGraph;
 std::vector<int> activeRoute;
 std::vector<int> occupiedHistory;
 int reservedSlotIndex = -1;
+int mainVehicleParkedSlotIndex = -1;
 int nextSpawnSearchIndex = 0;
 int selectedCarType = 0;
 int selectedPhoneFloor = 0;
@@ -193,34 +207,19 @@ GuidanceTarget guidanceTarget = GuidanceTarget::None;
 bool noticeSuccessStyle = false;
 std::mt19937 randomEngine{ std::random_device{}() };
 double lastCommandCheckTime = 0.0;
+double lastStateExportTime = 0.0;
 std::string lastProcessedCommandId;
-std::array<std::unique_ptr<Model>, 3> carModels;
-std::array<bool, 3> carModelLoaded{ false, false, false };
+std::array<std::unique_ptr<Model>, 5> carModels;
+std::array<bool, 5> carModelLoaded{ false, false, false, false, false };
 std::vector<CollisionBox> staticCollisionBoxes;
 constexpr glm::vec3 CAMERA_COLLISION_HALF_SIZE(0.65f, 1.15f, 0.65f);
 
-const std::array<CarPreset, 3> carPresets = {
-    CarPreset{
-        "model/cars/car1/car.obj",
-        1.0f,
-        0.0f,
-        glm::vec3(0.0f),
-        glm::vec4(0.13f, 0.48f, 0.95f, 1.0f)
-    },
-    CarPreset{
-        "model/cars/car2/car.obj",
-        1.0f,
-        0.0f,
-        glm::vec3(0.0f),
-        glm::vec4(0.92f, 0.18f, 0.16f, 1.0f)
-    },
-    CarPreset{
-        "model/cars/car3/car.obj",
-        1.0f,
-        0.0f,
-        glm::vec3(0.0f),
-        glm::vec4(0.96f, 0.72f, 0.12f, 1.0f)
-    }
+const std::array<CarPreset, 5> carPresets = {
+    CarPreset{ "", 1.0f, 0.0f, glm::vec3(0.0f), glm::vec4(0.10f, 0.48f, 0.96f, 1.0f) }, // Sedan azul
+    CarPreset{ "", 1.0f, 0.0f, glm::vec3(0.0f), glm::vec4(0.95f, 0.16f, 0.12f, 1.0f) }, // Hatchback rojo
+    CarPreset{ "", 1.0f, 0.0f, glm::vec3(0.0f), glm::vec4(0.96f, 0.70f, 0.08f, 1.0f) }, // SUV amarillo
+    CarPreset{ "", 1.0f, 0.0f, glm::vec3(0.0f), glm::vec4(0.16f, 0.78f, 0.38f, 1.0f) }, // Pickup verde
+    CarPreset{ "", 1.0f, 0.0f, glm::vec3(0.0f), glm::vec4(0.72f, 0.20f, 0.92f, 1.0f) }  // Deportivo morado
 };
 
 std::vector<glm::vec3> allLampLightPositions;
@@ -234,6 +233,12 @@ glm::vec3 resolveCollisionMovement(
     const glm::vec3& start,
     const glm::vec3& desired,
     const glm::vec3& halfSize
+);
+glm::vec3 resolveVehicleMovement(
+    const glm::vec3& start,
+    const glm::vec3& desired,
+    float vehicleRotationDegrees,
+    bool& blocked
 );
 void moveCameraSafely(Camera_Movement direction);
 int floorSlotCount(int floorIndex);
@@ -259,6 +264,10 @@ void updateAutomaticArrival();
 void processExternalCommands();
 std::string extractJsonString(const std::string& json, const std::string& key);
 void exportParkingStateJson();
+int floorFromWorldHeight(float y);
+float calculateRemainingRouteDistance(const glm::vec3& vehiclePosition);
+std::string currentNavigationInstruction(const glm::vec3& vehiclePosition);
+void parkMainVehicleInReservedSlot();
 void updateWindowTitle(GLFWwindow* window);
 std::string slotStateName(SlotState state);
 glm::vec4 slotStateColor(SlotState state);
@@ -350,24 +359,24 @@ void drawArrow(
     const glm::vec3 right = glm::normalize(glm::cross(referenceUp, direction));
 
     auto drawBetween = [&](const glm::vec3& startPoint,
-        const glm::vec3& endPoint,
-        float width,
-        float height,
-        const glm::vec4& drawColor)
-        {
-            const glm::vec3 segment = endPoint - startPoint;
-            const float length = glm::length(segment);
-            if (length < 0.0001f)
-                return;
-            drawOrientedBox(
-                shader,
-                cubeVAO,
-                (startPoint + endPoint) * 0.5f,
-                glm::vec3(width, height, length),
-                segment,
-                drawColor
-            );
-        };
+                           const glm::vec3& endPoint,
+                           float width,
+                           float height,
+                           const glm::vec4& drawColor)
+    {
+        const glm::vec3 segment = endPoint - startPoint;
+        const float length = glm::length(segment);
+        if (length < 0.0001f)
+            return;
+        drawOrientedBox(
+            shader,
+            cubeVAO,
+            (startPoint + endPoint) * 0.5f,
+            glm::vec3(width, height, length),
+            segment,
+            drawColor
+        );
+    };
 
     const glm::vec3 shaftStart = center - direction * (0.95f * size);
     const glm::vec3 shaftEnd = center + direction * (0.35f * size);
@@ -421,7 +430,7 @@ int main()
     GLFWwindow* window = glfwCreateWindow(
         SCR_WIDTH,
         SCR_HEIGHT,
-        "Smart Parking - Fase 4",
+        "Smart Parking - PROYECTO FINAL",
         nullptr,
         nullptr
     );
@@ -479,20 +488,6 @@ int main()
     Model streetModel("model/street/street.obj");
     Model nightSkyModel("model/night_sky/night_sky.obj");
 
-    // La misma malla OBJ que se dibuja se utiliza para impedir que la
-    // camara libre atraviese paredes, columnas, pisos, rampas y barandas.
-    if (!parkingCollision.loadFromObj("model/parking/parking.obj"))
-    {
-        std::cerr << "No se pudo cargar parking.obj para colisiones exactas.\n";
-    }
-
-    // Piso exterior y volumen superior de seguridad.
-    parkingCollision.setGroundPlane(-5.30f);
-    parkingCollision.addSolidBox(
-        glm::vec3(0.0f, 31.86f, 0.0f),
-        glm::vec3(93.90f, 11.20f, 69.50f)
-    );
-
     // =====================================================
     // VEHÍCULO CONTROLABLE
     // =====================================================
@@ -504,29 +499,22 @@ int main()
         "model/Vehicle/Wheel_BR.obj"
     );
 
-    // Posición inicial provisional en la entrada del escenario.
-    vehicle.setPosition(glm::vec3(15.0f, -1.55f, 40.5f));
+    // El vehículo inicia sobre el pavimento exterior, antes de la rampa
+    // principal. La altura coincide con el extremo inferior real de la rampa
+    // más la separación de suspensión usada en Vehicle::updateRamp().
+    constexpr float exteriorGroundY = -3.62221f;
+    constexpr float vehicleSuspensionHeight = 0.10f;
+    vehicle.setPosition(glm::vec3(12.20f, exteriorGroundY + vehicleSuspensionHeight, 52.50f));
     vehicle.setRotation(35.0f);
-    vehicle.setScale(2.0f);
+    // Escala medida con respecto al ancho real de las casillas.
+    vehicle.setScale(1.25f);
     vehicle.setForwardOffset(145.0f);
-    vehicle.setModelPivotOffset(glm::vec3(0.0f));
+    // Mantiene el punto mas bajo de las ruedas a la misma altura que la
+    // calibracion original de escala 2.0, aunque el Mazda ahora use 1.25.
+    vehicle.setModelPivotOffset(glm::vec3(0.0f, 0.3640f, 0.0f));
     controlledVehicle = &vehicle;
 
-    for (std::size_t i = 0; i < carPresets.size(); ++i)
-    {
-        if (fs::exists(carPresets[i].path))
-        {
-            std::cout << "Cargando modelo de carro: " << carPresets[i].path << '\n';
-            carModels[i] = std::make_unique<Model>(carPresets[i].path);
-            carModelLoaded[i] = !carModels[i]->meshes.empty();
-        }
-        else
-        {
-            std::cout
-                << "Modelo no encontrado: " << carPresets[i].path
-                << ". Se usara el carro procedural de respaldo.\n";
-        }
-    }
+    // Los cinco autos estacionados se construyen solo con cubos; no cargan OBJ.
 
     camera.MovementSpeed = 30.0f;
 
@@ -618,47 +606,46 @@ int main()
 
     const std::array<glm::vec3, 54> lampPositions = {
         glm::vec3(-15.2176f,  4.5834f,  8.7f), glm::vec3(-15.2176f,  4.5834f, -4.7f),
-        glm::vec3(-5.2176f,  4.5834f,  8.7f), glm::vec3(-5.2176f,  4.5834f, -4.7f),
-        glm::vec3(18.2180f,  4.5834f,  8.7f), glm::vec3(18.2180f,  4.5834f, -4.7f),
-        glm::vec3(8.2180f,  4.5834f,  8.7f), glm::vec3(8.2180f,  4.5834f, -4.7f),
-        glm::vec3(23.7700f,  4.5834f, 20.0f), glm::vec3(0.8734f,  4.5834f, 20.0f),
-        glm::vec3(-22.0232f,  4.5834f, 20.0f), glm::vec3(36.8090f,  4.5834f, 20.0f),
-        glm::vec3(-36.8090f,  4.5834f, 20.0f), glm::vec3(23.7700f,  4.5834f,-23.0f),
-        glm::vec3(0.8734f,  4.5834f,-23.0f), glm::vec3(-22.0232f,  4.5834f,-23.0f),
-        glm::vec3(36.8090f,  4.5834f,-23.0f), glm::vec3(-36.8090f,  4.5834f,-23.0f),
+        glm::vec3( -5.2176f,  4.5834f,  8.7f), glm::vec3( -5.2176f,  4.5834f, -4.7f),
+        glm::vec3( 18.2180f,  4.5834f,  8.7f), glm::vec3( 18.2180f,  4.5834f, -4.7f),
+        glm::vec3(  8.2180f,  4.5834f,  8.7f), glm::vec3(  8.2180f,  4.5834f, -4.7f),
+        glm::vec3( 23.7700f,  4.5834f, 20.0f), glm::vec3(  0.8734f,  4.5834f, 20.0f),
+        glm::vec3(-22.0232f,  4.5834f, 20.0f), glm::vec3( 36.8090f,  4.5834f, 20.0f),
+        glm::vec3(-36.8090f,  4.5834f, 20.0f), glm::vec3( 23.7700f,  4.5834f,-23.0f),
+        glm::vec3(  0.8734f,  4.5834f,-23.0f), glm::vec3(-22.0232f,  4.5834f,-23.0f),
+        glm::vec3( 36.8090f,  4.5834f,-23.0f), glm::vec3(-36.8090f,  4.5834f,-23.0f),
 
         glm::vec3(-15.2176f, 12.5810f,  8.7f), glm::vec3(-15.2176f, 12.5810f, -4.7f),
-        glm::vec3(-5.2176f, 12.5810f,  8.7f), glm::vec3(-5.2176f, 12.5810f, -4.7f),
-        glm::vec3(18.2180f, 12.5810f,  8.7f), glm::vec3(18.2180f, 12.5810f, -4.7f),
-        glm::vec3(8.2180f, 12.5810f,  8.7f), glm::vec3(8.2180f, 12.5810f, -4.7f),
-        glm::vec3(23.7700f, 12.5810f, 20.0f), glm::vec3(0.8734f, 12.5810f, 20.0f),
-        glm::vec3(-22.0232f, 12.5810f, 20.0f), glm::vec3(36.8090f, 12.5810f, 20.0f),
-        glm::vec3(-36.8090f, 12.5810f, 20.0f), glm::vec3(23.7700f, 12.5810f,-23.0f),
-        glm::vec3(0.8734f, 12.5810f,-23.0f), glm::vec3(-22.0232f, 12.5810f,-23.0f),
-        glm::vec3(36.8090f, 12.5810f,-23.0f), glm::vec3(-36.8090f, 12.5810f,-23.0f),
+        glm::vec3( -5.2176f, 12.5810f,  8.7f), glm::vec3( -5.2176f, 12.5810f, -4.7f),
+        glm::vec3( 18.2180f, 12.5810f,  8.7f), glm::vec3( 18.2180f, 12.5810f, -4.7f),
+        glm::vec3(  8.2180f, 12.5810f,  8.7f), glm::vec3(  8.2180f, 12.5810f, -4.7f),
+        glm::vec3( 23.7700f, 12.5810f, 20.0f), glm::vec3(  0.8734f, 12.5810f, 20.0f),
+        glm::vec3(-22.0232f, 12.5810f, 20.0f), glm::vec3( 36.8090f, 12.5810f, 20.0f),
+        glm::vec3(-36.8090f, 12.5810f, 20.0f), glm::vec3( 23.7700f, 12.5810f,-23.0f),
+        glm::vec3(  0.8734f, 12.5810f,-23.0f), glm::vec3(-22.0232f, 12.5810f,-23.0f),
+        glm::vec3( 36.8090f, 12.5810f,-23.0f), glm::vec3(-36.8090f, 12.5810f,-23.0f),
 
         glm::vec3(-15.2176f, 20.5786f,  8.7f), glm::vec3(-15.2176f, 20.5786f, -4.7f),
-        glm::vec3(-5.2176f, 20.5786f,  8.7f), glm::vec3(-5.2176f, 20.5786f, -4.7f),
-        glm::vec3(18.2180f, 20.5786f,  8.7f), glm::vec3(18.2180f, 20.5786f, -4.7f),
-        glm::vec3(8.2180f, 20.5786f,  8.7f), glm::vec3(8.2180f, 20.5786f, -4.7f),
-        glm::vec3(23.7700f, 20.5786f, 20.0f), glm::vec3(0.8734f, 20.5786f, 20.0f),
-        glm::vec3(-22.0232f, 20.5786f, 20.0f), glm::vec3(36.8090f, 20.5786f, 20.0f),
-        glm::vec3(-36.8090f, 20.5786f, 20.0f), glm::vec3(23.7700f, 20.5786f,-23.0f),
-        glm::vec3(0.8734f, 20.5786f,-23.0f), glm::vec3(-22.0232f, 20.5786f,-23.0f),
-        glm::vec3(36.8090f, 20.5786f,-23.0f), glm::vec3(-36.8090f, 20.5786f,-23.0f)
+        glm::vec3( -5.2176f, 20.5786f,  8.7f), glm::vec3( -5.2176f, 20.5786f, -4.7f),
+        glm::vec3( 18.2180f, 20.5786f,  8.7f), glm::vec3( 18.2180f, 20.5786f, -4.7f),
+        glm::vec3(  8.2180f, 20.5786f,  8.7f), glm::vec3(  8.2180f, 20.5786f, -4.7f),
+        glm::vec3( 23.7700f, 20.5786f, 20.0f), glm::vec3(  0.8734f, 20.5786f, 20.0f),
+        glm::vec3(-22.0232f, 20.5786f, 20.0f), glm::vec3( 36.8090f, 20.5786f, 20.0f),
+        glm::vec3(-36.8090f, 20.5786f, 20.0f), glm::vec3( 23.7700f, 20.5786f,-23.0f),
+        glm::vec3(  0.8734f, 20.5786f,-23.0f), glm::vec3(-22.0232f, 20.5786f,-23.0f),
+        glm::vec3( 36.8090f, 20.5786f,-23.0f), glm::vec3(-36.8090f, 20.5786f,-23.0f)
     };
 
-    const std::array<glm::vec3, 2> lightOffsets = {
-        glm::vec3(-1.7f, -2.0f, 0.0f),
-        glm::vec3(1.7f, -2.0f, 0.0f)
-    };
+    // El OBJ ceilinglight tiene los dos tubos fluorescentes alrededor de
+    // Y=-0.446 respecto al origen del modelo. Un emisor puntual centrado unos
+    // centimetros debajo de los tubos hace que la luz nazca exactamente desde
+    // cada foco, en lugar de quedar flotando dos metros por debajo.
+    constexpr glm::vec3 ceilingEmitterOffset(0.0f, -0.58f, 0.0f);
 
+    allLampLightPositions.reserve(lampPositions.size());
     for (const glm::vec3& lampPosition : lampPositions)
     {
-        for (const glm::vec3& offset : lightOffsets)
-        {
-            allLampLightPositions.push_back(lampPosition + offset);
-        }
+        allLampLightPositions.push_back(lampPosition + ceilingEmitterOffset);
     }
 
     exportParkingStateJson();
@@ -677,18 +664,36 @@ int main()
 
         processInput(window, vehicle);
 
-        vehicle.processInput(window, deltaTime);
-        processGamepadInput(vehicle);
+        // Mientras el Mazda está estacionado permanece inmóvil. El botón
+        // Buscar salida (o la tecla E) libera la plaza antes de permitir
+        // nuevamente los controles del vehículo.
+        if (mainVehicleParkedSlotIndex < 0)
+        {
+            vehicle.processInput(window, deltaTime);
+            processGamepadInput(vehicle);
+        }
+        else
+        {
+            vehicle.stop();
+        }
 
         const glm::vec3 previousVehiclePosition = vehicle.getPosition();
         vehicle.update(deltaTime);
 
-        // Colisión conservadora con los obstáculos estáticos del escenario.
-        if (collidesWithStaticObstacle(
+        // Colisión continua contra paredes, separadores, barreras y todos
+        // los límites exteriores del edificio. El movimiento se resuelve por
+        // ejes y con subpasos para impedir atravesar objetos a alta velocidad.
+        bool vehicleBlocked = false;
+        const glm::vec3 resolvedVehiclePosition = resolveVehicleMovement(
+            previousVehiclePosition,
             vehicle.getPosition(),
-            VEHICLE_COLLISION_HALF_SIZE))
+            vehicle.getRotation(),
+            vehicleBlocked
+        );
+        vehicle.setCurrentPosition(resolvedVehiclePosition);
+        if (vehicleBlocked)
         {
-            vehicle.setPosition(previousVehiclePosition);
+            vehicle.stop();
         }
 
         updateThirdPersonCameraReturn(deltaTime);
@@ -705,6 +710,15 @@ int main()
             noticeTimer = std::max(0.0f, noticeTimer - deltaTime);
 
         updateAutomaticArrival();
+
+        // Actualiza la app por Wi-Fi varias veces por segundo con la posición
+        // exacta del Mazda, la ruta y los estados de las plazas.
+        if (static_cast<double>(currentFrame) - lastStateExportTime >= 0.15)
+        {
+            lastStateExportTime = static_cast<double>(currentFrame);
+            exportParkingStateJson();
+        }
+
         updateWindowTitle(window);
 
         const glm::vec3 nightClear(0.002f, 0.004f, 0.012f);
@@ -725,34 +739,19 @@ int main()
         );
         const glm::mat4 view = getVehicleCameraView(vehicle);
 
-        // Cielo original del repositorio: usa night_sky.vs, night_sky.fs
-        // y el modelo model/night_sky/night_sky.obj.
+        // Cielo nocturno OBJ original con textura estrellada.
         glDepthFunc(GL_LEQUAL);
         glDepthMask(GL_FALSE);
         glDisable(GL_CULL_FACE);
-
         nightSkyShader.use();
-
         const glm::mat4 skyView = glm::mat4(glm::mat3(view));
         nightSkyShader.setMat4("projection", projection);
         nightSkyShader.setMat4("view", skyView);
         nightSkyShader.setFloat("dayFactor", dayFactor);
-
-        glm::mat4 nightSkyMatrix(1.0f);
-        nightSkyMatrix = glm::scale(
-            nightSkyMatrix,
-            glm::vec3(20.0f)
-        );
-
-        nightSkyShader.setMat4(
-            "model",
-            nightSkyMatrix
-        );
-
-        nightSkyModel.Draw(
-            nightSkyShader
-        );
-
+        glm::mat4 nightSky(1.0f);
+        nightSky = glm::scale(nightSky, glm::vec3(20.0f));
+        nightSkyShader.setMat4("model", nightSky);
+        nightSkyModel.Draw(nightSkyShader);
         glDepthMask(GL_TRUE);
         glDepthFunc(GL_LESS);
         glEnable(GL_CULL_FACE);
@@ -785,41 +784,101 @@ int main()
         modelShader.setVec3("viewPos", activeCameraPosition);
         modelShader.setFloat("dayFactor", dayFactor);
 
-        std::vector<std::pair<float, glm::vec3>> nearestLights;
-        nearestLights.reserve(allLampLightPositions.size());
+        // Las luces se seleccionan en dos grupos para impedir que los muchos
+        // indicadores de plazas desplacen a todos los focos del techo. Se
+        // reservan 18 emisores para techo y 6 para estados de parqueadero.
+        const float ceilingPower = glm::mix(2.35f, 0.38f, dayFactor);
+        std::vector<ScenePointLight> ceilingLights;
+        ceilingLights.reserve(allLampLightPositions.size());
         for (const glm::vec3& position : allLampLightPositions)
         {
-            const glm::vec3 difference = position - activeCameraPosition;
-            nearestLights.emplace_back(glm::dot(difference, difference), position);
+            ceilingLights.push_back({
+                position,
+                glm::vec3(1.00f, 0.92f, 0.76f) * ceilingPower,
+                0.085f,
+                0.032f
+            });
         }
-        std::partial_sort(
-            nearestLights.begin(),
-            nearestLights.begin() + std::min<std::size_t>(MAX_RENDERED_POINT_LIGHTS, nearestLights.size()),
-            nearestLights.end(),
-            [](const auto& left, const auto& right)
-            {
-                return left.first < right.first;
-            }
-        );
 
-        const int activeLightCount = static_cast<int>(
-            std::min<std::size_t>(MAX_RENDERED_POINT_LIGHTS, nearestLights.size())
-            );
+        std::vector<ScenePointLight> slotLights;
+        slotLights.reserve(parkingSlots.size());
+        for (const ParkingSlot& slot : parkingSlots)
+        {
+            const float aisleOffsetZ = slot.row == 'A' ? -4.15f : 4.15f;
+            const glm::vec4 stateColor = slotStateColor(slot.state);
+            slotLights.push_back({
+                slot.position + glm::vec3(0.0f, 2.75f, aisleOffsetZ),
+                glm::vec3(stateColor) * 1.35f,
+                0.20f,
+                0.14f
+            });
+        }
+
+        auto nearestFromGroup = [&](const std::vector<ScenePointLight>& source,
+                                    std::size_t maximumCount)
+        {
+            std::vector<std::pair<float, ScenePointLight>> sorted;
+            sorted.reserve(source.size());
+            for (const ScenePointLight& light : source)
+            {
+                const glm::vec3 difference = light.position - activeCameraPosition;
+                sorted.emplace_back(glm::dot(difference, difference), light);
+            }
+
+            const std::size_t count = std::min(maximumCount, sorted.size());
+            if (count > 0)
+            {
+                std::partial_sort(
+                    sorted.begin(),
+                    sorted.begin() + count,
+                    sorted.end(),
+                    [](const auto& left, const auto& right)
+                    {
+                        return left.first < right.first;
+                    }
+                );
+            }
+            sorted.resize(count);
+            return sorted;
+        };
+
+        constexpr std::size_t ceilingLightQuota = 18;
+        constexpr std::size_t slotLightQuota =
+            static_cast<std::size_t>(MAX_RENDERED_POINT_LIGHTS) - ceilingLightQuota;
+
+        const auto nearestCeilingLights =
+            nearestFromGroup(ceilingLights, ceilingLightQuota);
+        const auto nearestSlotLights =
+            nearestFromGroup(slotLights, slotLightQuota);
+
+        std::vector<ScenePointLight> activeLights;
+        activeLights.reserve(MAX_RENDERED_POINT_LIGHTS);
+        for (const auto& entry : nearestCeilingLights)
+            activeLights.push_back(entry.second);
+        for (const auto& entry : nearestSlotLights)
+            activeLights.push_back(entry.second);
+
+        const int activeLightCount = static_cast<int>(activeLights.size());
         modelShader.setInt("activePointLights", activeLightCount);
 
         for (int i = 0; i < activeLightCount; ++i)
         {
+            const ScenePointLight& light = activeLights[static_cast<std::size_t>(i)];
             const std::string base = "pointLights[" + std::to_string(i) + "]";
-            modelShader.setVec3(base + ".position", nearestLights[i].second);
-            modelShader.setVec3(base + ".ambient", glm::vec3(0.012f, 0.012f, 0.018f));
-            modelShader.setVec3(base + ".diffuse", glm::vec3(1.0f, 0.85f, 0.55f));
-            modelShader.setVec3(base + ".specular", glm::vec3(1.0f, 0.90f, 0.65f));
+            modelShader.setVec3(base + ".position", light.position);
+            modelShader.setVec3(base + ".ambient", light.color * 0.040f);
+            modelShader.setVec3(base + ".diffuse", light.color);
+            modelShader.setVec3(
+                base + ".specular",
+                glm::min(light.color * 1.10f, glm::vec3(3.0f))
+            );
             modelShader.setFloat(base + ".constant", 1.0f);
-            modelShader.setFloat(base + ".linear", 0.14f);
-            modelShader.setFloat(base + ".quadratic", 0.07f);
+            modelShader.setFloat(base + ".linear", light.linear);
+            modelShader.setFloat(base + ".quadratic", light.quadratic);
         }
 
         glm::mat4 modelMatrix(1.0f);
+        modelShader.setFloat("emissiveStrength", 1.0f);
         modelShader.setMat4("model", modelMatrix);
         parkingModel.Draw(modelShader);
 
@@ -828,6 +887,12 @@ int main()
         modelShader.setMat4("model", modelMatrix);
         streetModel.Draw(modelShader);
 
+        // Los tubos del modelo usan material emisivo. De noche brillan y
+        // durante el dia permanecen visibles con intensidad reducida.
+        modelShader.setFloat(
+            "emissiveStrength",
+            glm::mix(4.5f, 0.70f, dayFactor)
+        );
         for (const glm::vec3& lampPosition : lampPositions)
         {
             modelMatrix = glm::mat4(1.0f);
@@ -835,6 +900,7 @@ int main()
             modelShader.setMat4("model", modelMatrix);
             lightModel.Draw(modelShader);
         }
+        modelShader.setFloat("emissiveStrength", 1.0f);
 
         // Carros ocupando espacios.
         for (const ParkingSlot& slot : parkingSlots)
@@ -873,13 +939,13 @@ int main()
         primitiveShader.setMat4("projection", projection);
         primitiveShader.setMat4("view", view);
 
-        for (const ParkingSlot& slot : parkingSlots)
+        for (std::size_t slotIndex = 0; slotIndex < parkingSlots.size(); ++slotIndex)
         {
-            if (slot.state == SlotState::Occupied)
+            const ParkingSlot& slot = parkingSlots[slotIndex];
+            if (slot.state == SlotState::Occupied &&
+                static_cast<int>(slotIndex) != mainVehicleParkedSlotIndex)
             {
-                const int carType = std::clamp(slot.carType, 0, static_cast<int>(carPresets.size()) - 1);
-                if (!carModelLoaded[carType])
-                    drawFallbackCar(primitiveShader, cubeVAO, slot);
+                drawFallbackCar(primitiveShader, cubeVAO, slot);
             }
         }
 
@@ -924,8 +990,16 @@ void processInput(GLFWwindow* window, Vehicle& vehicle)
 
     if (pressedOnce(window, GLFW_KEY_N))
     {
+        // Se conserva el mismo OBJ del cielo estrellado. El shader cambia su
+        // apariencia entre noche y dia sin sustituir el modelo del escenario.
         dayMode = !dayMode;
-        showNotice(dayMode ? "MODO DIA" : "MODO NOCHE", "CIELO ORIGINAL DEL REPOSITORIO", 2.0f);
+        showNotice(
+            dayMode ? "MODO DIA" : "MODO NOCHE",
+            dayMode
+                ? "LUZ SOLAR ACTIVA - FOCOS DE TECHO EN BAJA INTENSIDAD"
+                : "FOCOS DE TECHO ENCENDIDOS",
+            2.5f
+        );
         updateWindowTitle(window);
     }
 
@@ -951,9 +1025,12 @@ void processInput(GLFWwindow* window, Vehicle& vehicle)
     if (pressedOnce(window, GLFW_KEY_V))
     {
         selectedCarType = (selectedCarType + 1) % static_cast<int>(carPresets.size());
+        static const std::array<std::string, 5> carTypeNames = {
+            "SEDAN", "HATCHBACK", "SUV", "PICKUP", "DEPORTIVO"
+        };
         showNotice(
             "TIPO DE CARRO " + std::to_string(selectedCarType + 1),
-            carModelLoaded[selectedCarType] ? "MODELO OBJ CARGADO" : "USANDO RESPALDO PROCEDURAL",
+            carTypeNames[selectedCarType] + " CONSTRUIDO CON CUBOS",
             2.5f
         );
     }
@@ -1108,31 +1185,31 @@ std::vector<ParkingSlot> createParkingSlots()
     slots.reserve(169);
 
     auto addSlot = [&](int floor, char row, int number, float x)
-        {
-            std::ostringstream id;
-            id << floorIds[floor] << '-' << row
-                << std::setw(2) << std::setfill('0') << number;
+    {
+        std::ostringstream id;
+        id << floorIds[floor] << '-' << row
+           << std::setw(2) << std::setfill('0') << number;
 
-            const SlotState initialState =
-                (row == 'A' && number <= 2)
-                ? SlotState::Disabled
-                : SlotState::Available;
+        const SlotState initialState =
+            (row == 'A' && number <= 2)
+            ? SlotState::Disabled
+            : SlotState::Available;
 
-            const float z = row == 'A' ? northRowZ : southRowZ;
-            const float rotation = row == 'A' ? 0.0f : 180.0f;
-            slots.push_back({
-                id.str(),
-                floorIds[floor],
-                floor,
-                row,
-                number,
-                glm::vec3(x, floorSurfaceY[floor] + 0.28f, z),
-                rotation,
-                initialState,
-                -1,
-                0
-                });
-        };
+        const float z = row == 'A' ? northRowZ : southRowZ;
+        const float rotation = row == 'A' ? 0.0f : 180.0f;
+        slots.push_back({
+            id.str(),
+            floorIds[floor],
+            floor,
+            row,
+            number,
+            glm::vec3(x, floorSurfaceY[floor] + 0.28f, z),
+            rotation,
+            initialState,
+            -1,
+            0
+        });
+    };
 
     for (int floor = 0; floor < 4; ++floor)
     {
@@ -1177,32 +1254,41 @@ ParkingGraph createParkingGraph(std::vector<ParkingSlot>& slots)
     ParkingGraph graph;
 
     auto addNode = [&graph](const glm::vec3& position)
-        {
-            const int index = static_cast<int>(graph.nodes.size());
-            graph.nodes.push_back(position);
-            graph.adjacency.emplace_back();
-            return index;
-        };
+    {
+        const int index = static_cast<int>(graph.nodes.size());
+        graph.nodes.push_back(position);
+        graph.adjacency.emplace_back();
+        return index;
+    };
 
     auto nearestColumnForX = [&xCenters](float x)
+    {
+        int nearest = 0;
+        float nearestDistance = std::numeric_limits<float>::infinity();
+        for (int column = 0; column < 22; ++column)
         {
-            int nearest = 0;
-            float nearestDistance = std::numeric_limits<float>::infinity();
-            for (int column = 0; column < 22; ++column)
+            const float distance = std::abs(xCenters[column] - x);
+            if (distance < nearestDistance)
             {
-                const float distance = std::abs(xCenters[column] - x);
-                if (distance < nearestDistance)
-                {
-                    nearestDistance = distance;
-                    nearest = column;
-                }
+                nearestDistance = distance;
+                nearest = column;
             }
-            return nearest;
-        };
+        }
+        return nearest;
+    };
 
-    // Acceso frontal. La conexion atraviesa el hueco real sin parqueaderos.
-    graph.entranceNode = addNode(glm::vec3(12.0f, floorSurfaceY[0] + 0.42f, 47.0f));
-    graph.exitNode = addNode(glm::vec3(28.0f, floorSurfaceY[0] + 0.42f, 47.0f));
+    // Acceso frontal. La puerta principal real está entre X=1.55 y X=23.35.
+    // Usamos el mismo centro para la ruta, el círculo de misión y la detección
+    // de llegada, evitando que la salida aparezca desplazada hacia la derecha.
+    constexpr float mainGateCenterX = 12.45f;
+    constexpr float mainGateRouteZ = 47.0f;
+
+    graph.entranceNode = addNode(
+        glm::vec3(mainGateCenterX, floorSurfaceY[0] + 0.42f, mainGateRouteZ)
+    );
+    graph.exitNode = addNode(
+        glm::vec3(mainGateCenterX, floorSurfaceY[0] + 0.42f, mainGateRouteZ)
+    );
 
     std::array<std::array<int, 22>, 4> northLane{};
     std::array<std::array<int, 22>, 4> southLane{};
@@ -1278,8 +1364,16 @@ ParkingGraph createParkingGraph(std::vector<ParkingSlot>& slots)
         addUndirectedEdge(graph, northLane[floor][rightRampColumn], rightRampNorth[floor]);
     }
 
-    addUndirectedEdge(graph, graph.entranceNode, northLane[0][nearestColumnForX(12.0f)]);
-    addUndirectedEdge(graph, graph.exitNode, northLane[0][nearestColumnForX(28.0f)]);
+    addUndirectedEdge(
+        graph,
+        graph.entranceNode,
+        northLane[0][nearestColumnForX(mainGateCenterX)]
+    );
+    addUndirectedEdge(
+        graph,
+        graph.exitNode,
+        northLane[0][nearestColumnForX(mainGateCenterX)]
+    );
 
     // La geometria izquierda sube desde Z positivo hacia Z negativo.
     // La geometria derecha baja desde Z positivo hacia Z negativo.
@@ -1312,9 +1406,9 @@ std::vector<CollisionBox> createStaticCollisionBoxes()
     std::vector<CollisionBox> boxes;
 
     auto addBox = [&](const glm::vec3& center, const glm::vec3& fullSize, const std::string& name)
-        {
-            boxes.push_back({ center, fullSize * 0.5f, name });
-        };
+    {
+        boxes.push_back({ center, fullSize * 0.5f, name });
+    };
 
     // Tres muros originales del OBJ. Los espacios ENTRE estos muros siguen libres.
     addBox(glm::vec3(-22.4734f, 9.0770f, 1.3645f), glm::vec3(0.50f, 24.20f, 20.90f), "MURO_CENTRAL_IZQUIERDO");
@@ -1337,7 +1431,160 @@ std::vector<CollisionBox> createStaticCollisionBoxes()
         // los dos pasillos centrales situados entre muro y muro.
         addBox(glm::vec3(-26.92f, baseY + 1.35f, 0.0f), glm::vec3(7.10f, 2.70f, 1.20f), "BARRERA_EXTERIOR_IZQUIERDA");
         addBox(glm::vec3(27.72f, baseY + 1.35f, 0.0f), glm::vec3(6.30f, 2.70f, 1.20f), "BARRERA_EXTERIOR_DERECHA");
+
+        // ================================================================
+        // LÍMITES FÍSICOS DEL EDIFICIO
+        // ================================================================
+        // Las barandas y bordes del OBJ son visibles, pero no poseen una
+        // colisión automática. Estas cajas invisibles cierran cada nivel y
+        // dejan abierta únicamente la puerta principal de la planta baja.
+        constexpr float perimeterHalfHeight = 1.90f;
+        constexpr float perimeterThickness = 1.20f;
+        constexpr float westX = -45.05f;
+        constexpr float eastX = 45.05f;
+        constexpr float southZ = -33.55f;
+        constexpr float northZ = 33.55f;
+        constexpr float buildingWidth = eastX - westX;
+        constexpr float buildingDepth = northZ - southZ;
+
+        const float perimeterCenterY = baseY + perimeterHalfHeight;
+
+        // Costados y parte posterior: cerrados en los cuatro niveles.
+        addBox(
+            glm::vec3(westX, perimeterCenterY, 0.0f),
+            glm::vec3(
+                perimeterThickness,
+                perimeterHalfHeight * 2.0f,
+                buildingDepth + perimeterThickness * 2.0f
+            ),
+            "LIMITE_OESTE_PISO_" + std::to_string(floor)
+        );
+        addBox(
+            glm::vec3(eastX, perimeterCenterY, 0.0f),
+            glm::vec3(
+                perimeterThickness,
+                perimeterHalfHeight * 2.0f,
+                buildingDepth + perimeterThickness * 2.0f
+            ),
+            "LIMITE_ESTE_PISO_" + std::to_string(floor)
+        );
+        addBox(
+            glm::vec3(0.0f, perimeterCenterY, southZ),
+            glm::vec3(
+                buildingWidth + perimeterThickness * 2.0f,
+                perimeterHalfHeight * 2.0f,
+                perimeterThickness
+            ),
+            "LIMITE_SUR_PISO_" + std::to_string(floor)
+        );
+
+        if (floor == 0)
+        {
+            // La puerta principal queda abierta entre estos dos valores.
+            constexpr float entranceLeftX = 1.55f;
+            constexpr float entranceRightX = 23.35f;
+
+            const float leftSegmentWidth = entranceLeftX - westX;
+            const float rightSegmentWidth = eastX - entranceRightX;
+
+            addBox(
+                glm::vec3(
+                    westX + leftSegmentWidth * 0.5f,
+                    perimeterCenterY,
+                    northZ
+                ),
+                glm::vec3(
+                    leftSegmentWidth,
+                    perimeterHalfHeight * 2.0f,
+                    perimeterThickness
+                ),
+                "LIMITE_NORTE_PB_IZQUIERDO"
+            );
+            addBox(
+                glm::vec3(
+                    entranceRightX + rightSegmentWidth * 0.5f,
+                    perimeterCenterY,
+                    northZ
+                ),
+                glm::vec3(
+                    rightSegmentWidth,
+                    perimeterHalfHeight * 2.0f,
+                    perimeterThickness
+                ),
+                "LIMITE_NORTE_PB_DERECHO"
+            );
+
+            // Canal que conduce a la puerta. Impide salir cortando por los
+            // costados, pero deja libre el extremo frontal para entrar/salir.
+            constexpr float entranceEndZ = 49.25f;
+            const float entranceDepth = entranceEndZ - northZ;
+            const float entranceCenterZ = northZ + entranceDepth * 0.5f;
+
+            addBox(
+                glm::vec3(entranceLeftX, perimeterCenterY, entranceCenterZ),
+                glm::vec3(
+                    perimeterThickness,
+                    perimeterHalfHeight * 2.0f,
+                    entranceDepth + perimeterThickness
+                ),
+                "CANAL_ENTRADA_IZQUIERDO"
+            );
+            addBox(
+                glm::vec3(entranceRightX, perimeterCenterY, entranceCenterZ),
+                glm::vec3(
+                    perimeterThickness,
+                    perimeterHalfHeight * 2.0f,
+                    entranceDepth + perimeterThickness
+                ),
+                "CANAL_ENTRADA_DERECHO"
+            );
+        }
+        else
+        {
+            // Los niveles superiores no tienen una salida exterior.
+            addBox(
+                glm::vec3(0.0f, perimeterCenterY, northZ),
+                glm::vec3(
+                    buildingWidth + perimeterThickness * 2.0f,
+                    perimeterHalfHeight * 2.0f,
+                    perimeterThickness
+                ),
+                "LIMITE_NORTE_PISO_" + std::to_string(floor)
+            );
+        }
     }
+
+    // Pilares estructurales: posiciones medidas directamente desde Pillars_0
+    // en parking.obj. Su altura completa evita atravesarlos en pisos superiores.
+    auto addPillar = [&](float x, float y, float z, float height, const std::string& name)
+    {
+        boxes.push_back({
+            glm::vec3(x, y, z),
+            glm::vec3(1.10f, height * 0.5f, 1.10f),
+            name
+        });
+    };
+
+    addPillar(-44.0381f, 11.6681f, -32.5211f, 33.7317f, "PILAR_01");
+    addPillar(-44.0381f,  9.3239f,  -9.6180f, 29.0433f, "PILAR_02");
+    addPillar(-44.0381f,  9.3240f,  12.5664f, 29.0433f, "PILAR_03");
+    addPillar(-44.0381f, 11.8276f,  31.9347f, 34.0506f, "PILAR_04");
+    addPillar(-22.4734f,  9.3239f, -32.5211f, 29.0433f, "PILAR_05");
+    addPillar(-22.4734f, 14.4509f,  -9.6180f, 39.2972f, "PILAR_06");
+    addPillar(-22.4734f, 14.4509f,  12.5664f, 39.2972f, "PILAR_07");
+    addPillar(-22.4734f,  9.3240f,  31.9347f, 29.0433f, "PILAR_08");
+    addPillar(  0.8495f,  9.3239f, -32.5211f, 29.0433f, "PILAR_09");
+    addPillar(  0.8495f, 14.4509f,  -9.6180f, 39.2972f, "PILAR_10");
+    addPillar(  0.8495f, 14.4509f,  12.5664f, 39.2972f, "PILAR_11");
+    addPillar(  0.8495f,  9.3240f,  31.9347f, 29.0433f, "PILAR_12");
+    addPillar( 24.0039f,  9.3239f, -32.5211f, 29.0433f, "PILAR_13");
+    addPillar( 24.0039f, 14.4509f,  -9.6180f, 39.2972f, "PILAR_14");
+    addPillar( 24.0039f, 14.4509f,  12.5664f, 39.2972f, "PILAR_15");
+    addPillar( 24.0039f,  9.3240f,  31.9347f, 29.0433f, "PILAR_16");
+    addPillar( 44.0580f, 11.6681f, -32.5211f, 33.7317f, "PILAR_17");
+    addPillar( 44.0580f,  9.3239f,  -9.6180f, 29.0433f, "PILAR_18");
+    addPillar( 44.0580f,  9.3240f,  12.5664f, 29.0433f, "PILAR_19");
+    addPillar( 44.0580f, 11.8276f,  31.9347f, 34.0506f, "PILAR_20");
 
     return boxes;
 }
@@ -1390,21 +1637,99 @@ glm::vec3 resolveCollisionMovement(
     return resolved;
 }
 
+glm::vec3 resolveVehicleMovement(
+    const glm::vec3& start,
+    const glm::vec3& desired,
+    float vehicleRotationDegrees,
+    bool& blocked
+)
+{
+    blocked = false;
+
+    // La caja AABB se amplía según el ángulo actual del vehículo. De esta
+    // manera las esquinas del carro tampoco pueden introducirse en un muro.
+    const float yawRadians = glm::radians(vehicleRotationDegrees);
+    const float cosine = std::abs(std::cos(yawRadians));
+    const float sine = std::abs(std::sin(yawRadians));
+    const glm::vec3 rotatedHalfSize(
+        cosine * VEHICLE_COLLISION_HALF_SIZE.x +
+            sine * VEHICLE_COLLISION_HALF_SIZE.z,
+        VEHICLE_COLLISION_HALF_SIZE.y,
+        sine * VEHICLE_COLLISION_HALF_SIZE.x +
+            cosine * VEHICLE_COLLISION_HALF_SIZE.z
+    );
+
+    const glm::vec3 totalDelta = desired - start;
+    const float horizontalDistance = glm::length(
+        glm::vec2(totalDelta.x, totalDelta.z)
+    );
+
+    // Se divide un movimiento largo en pasos pequeños. Esto evita que el
+    // carro atraviese una pared entre dos fotogramas a velocidad alta.
+    const int stepCount = std::max(
+        1,
+        static_cast<int>(std::ceil(horizontalDistance / 0.20f))
+    );
+
+    glm::vec3 resolved = start;
+
+    for (int step = 1; step <= stepCount; ++step)
+    {
+        const float t = static_cast<float>(step) /
+            static_cast<float>(stepCount);
+        const glm::vec3 target = start + totalDelta * t;
+
+        // Resolver X y Z por separado permite deslizarse a lo largo de una
+        // pared en vez de quedar completamente bloqueado.
+        glm::vec3 candidate = resolved;
+        candidate.x = target.x;
+        candidate.y = target.y;
+        glm::vec3 collisionCenter = candidate + glm::vec3(
+            0.0f,
+            VEHICLE_COLLISION_HALF_SIZE.y,
+            0.0f
+        );
+
+        if (!collidesWithStaticObstacle(collisionCenter, rotatedHalfSize))
+        {
+            resolved.x = candidate.x;
+        }
+        else
+        {
+            blocked = true;
+        }
+
+        candidate = resolved;
+        candidate.z = target.z;
+        candidate.y = target.y;
+        collisionCenter = candidate + glm::vec3(
+            0.0f,
+            VEHICLE_COLLISION_HALF_SIZE.y,
+            0.0f
+        );
+
+        if (!collidesWithStaticObstacle(collisionCenter, rotatedHalfSize))
+        {
+            resolved.z = candidate.z;
+        }
+        else
+        {
+            blocked = true;
+        }
+
+        // La altura la administra la física de pisos/rampas del vehículo.
+        resolved.y = target.y;
+    }
+
+    return resolved;
+}
+
 void moveCameraSafely(Camera_Movement direction)
 {
     const glm::vec3 start = camera.Position;
     camera.ProcessKeyboard(direction, deltaTime);
-
-    // Primera etapa: cajas logicas para barreras y limites agregados.
-    const glm::vec3 desired = resolveCollisionMovement(
-        start,
-        camera.Position,
-        CAMERA_COLLISION_HALF_SIZE
-    );
-
-    // Segunda etapa: triangulos reales del modelo para paredes,
-    // columnas, pisos, rampas y barandas.
-    camera.Position = parkingCollision.moveCamera(start, desired);
+    const glm::vec3 desired = camera.Position;
+    camera.Position = resolveCollisionMovement(start, desired, CAMERA_COLLISION_HALF_SIZE);
 }
 
 int floorSlotCount(int floorIndex)
@@ -1716,6 +2041,20 @@ void routeToExit()
 {
     cancelCurrentReservation();
 
+    // Al pedir salida, el Mazda abandona su casilla y esa plaza vuelve a verde.
+    if (mainVehicleParkedSlotIndex >= 0 &&
+        mainVehicleParkedSlotIndex < static_cast<int>(parkingSlots.size()))
+    {
+        ParkingSlot& parkedSlot = parkingSlots[mainVehicleParkedSlotIndex];
+        if (parkedSlot.state == SlotState::Occupied)
+            parkedSlot.state = SlotState::Available;
+        occupiedHistory.erase(
+            std::remove(occupiedHistory.begin(), occupiedHistory.end(), mainVehicleParkedSlotIndex),
+            occupiedHistory.end()
+        );
+        mainVehicleParkedSlotIndex = -1;
+    }
+
     const int startNode = findNearestGraphNode(getSimulationPosition());
     if (startNode < 0 || parkingGraph.exitNode < 0)
         return;
@@ -1769,6 +2108,8 @@ void releaseSlotById(const std::string& slotId)
         cancelCurrentReservation();
 
     slot.state = SlotState::Available;
+    if (slotIndex == mainVehicleParkedSlotIndex)
+        mainVehicleParkedSlotIndex = -1;
     occupiedHistory.erase(
         std::remove(occupiedHistory.begin(), occupiedHistory.end(), slotIndex),
         occupiedHistory.end()
@@ -1782,6 +2123,8 @@ void simulateRandomOccupancy()
 {
     cancelCurrentReservation();
     occupiedHistory.clear();
+    if (mainVehicleParkedSlotIndex >= 0)
+        occupiedHistory.push_back(mainVehicleParkedSlotIndex);
 
     std::uniform_int_distribution<int> occupiedPerFloor(18, 32);
     std::uniform_int_distribution<int> carTypeDistribution(
@@ -1789,7 +2132,7 @@ void simulateRandomOccupancy()
         static_cast<int>(carPresets.size()) - 1
     );
 
-    int totalOccupied = 0;
+    int totalOccupied = mainVehicleParkedSlotIndex >= 0 ? 1 : 0;
 
     for (int floor = 0; floor < 4; ++floor)
     {
@@ -1802,6 +2145,12 @@ void simulateRandomOccupancy()
 
             if (slot.state == SlotState::Disabled)
                 continue;
+
+            if (static_cast<int>(i) == mainVehicleParkedSlotIndex)
+            {
+                slot.state = SlotState::Occupied;
+                continue;
+            }
 
             slot.state = SlotState::Available;
             candidates.push_back(static_cast<int>(i));
@@ -1889,6 +2238,33 @@ void removeLastSpawnedCar()
     showNotice("NINGUN CARRO AGREGADO", "USA G PARA GENERAR UNA SIMULACION", 2.5f);
 }
 
+void parkMainVehicleInReservedSlot()
+{
+    if (controlledVehicle == nullptr ||
+        reservedSlotIndex < 0 ||
+        reservedSlotIndex >= static_cast<int>(parkingSlots.size()))
+    {
+        return;
+    }
+
+    const ParkingSlot& slot = parkingSlots[reservedSlotIndex];
+    constexpr std::array<float, 4> vehicleFloorY = {
+        -1.42000f, 6.47726f, 14.55185f, 22.64915f
+    };
+
+    controlledVehicle->stop();
+    controlledVehicle->setCurrentPosition(glm::vec3(
+        slot.position.x,
+        vehicleFloorY[slot.floorIndex],
+        slot.position.z
+    ));
+
+    // El OBJ del Mazda mira 145 grados respecto a su eje matematico.
+    // La fila A entra hacia +Z; la fila B entra hacia -Z.
+    const float parkingRotation = slot.row == 'A' ? -145.0f : 35.0f;
+    controlledVehicle->setCurrentRotation(parkingRotation);
+}
+
 void completeReservedParking()
 {
     if (reservedSlotIndex < 0 || reservedSlotIndex >= static_cast<int>(parkingSlots.size()))
@@ -1897,9 +2273,12 @@ void completeReservedParking()
         return;
     }
 
+    parkMainVehicleInReservedSlot();
+
     ParkingSlot& slot = parkingSlots[reservedSlotIndex];
     slot.state = SlotState::Occupied;
     slot.carType = selectedCarType;
+    mainVehicleParkedSlotIndex = reservedSlotIndex;
     occupiedHistory.push_back(reservedSlotIndex);
 
     const std::string completedId = slot.id;
@@ -1909,7 +2288,7 @@ void completeReservedParking()
 
     showNotice(
         "MISION SUPERADA",
-        "ESTACIONAMIENTO COMPLETADO: " + completedId,
+        "MAZDA ESTACIONADO AUTOMATICAMENTE EN " + completedId,
         6.0f,
         true
     );
@@ -1926,7 +2305,7 @@ void updateAutomaticArrival()
         const glm::vec3 targetPosition =
             parkingSlots[reservedSlotIndex].position + glm::vec3(0.0f, 1.2f, 0.0f);
 
-        if (glm::length(getSimulationPosition() - targetPosition) <= 5.5f)
+        if (glm::length(getSimulationPosition() - targetPosition) <= 6.5f)
             completeReservedParking();
         return;
     }
@@ -2083,6 +2462,103 @@ glm::vec4 slotStateColor(SlotState state)
     return glm::vec4(1.0f);
 }
 
+int floorFromWorldHeight(float y)
+{
+    constexpr std::array<float, 4> vehicleFloorY = {
+        -1.42000f, 6.47726f, 14.55185f, 22.64915f
+    };
+
+    int closestFloor = 0;
+    float closestDistance = std::abs(y - vehicleFloorY[0]);
+    for (int floor = 1; floor < 4; ++floor)
+    {
+        const float distance = std::abs(y - vehicleFloorY[floor]);
+        if (distance < closestDistance)
+        {
+            closestDistance = distance;
+            closestFloor = floor;
+        }
+    }
+    return closestFloor;
+}
+
+float calculateRemainingRouteDistance(const glm::vec3& vehiclePosition)
+{
+    if (activeRoute.empty())
+        return 0.0f;
+
+    std::size_t nearestPosition = 0;
+    float nearestDistance = std::numeric_limits<float>::infinity();
+    for (std::size_t routePosition = 0; routePosition < activeRoute.size(); ++routePosition)
+    {
+        const int nodeIndex = activeRoute[routePosition];
+        if (nodeIndex < 0 || nodeIndex >= static_cast<int>(parkingGraph.nodes.size()))
+            continue;
+        const float distance = glm::length(parkingGraph.nodes[nodeIndex] - vehiclePosition);
+        if (distance < nearestDistance)
+        {
+            nearestDistance = distance;
+            nearestPosition = routePosition;
+        }
+    }
+
+    float total = nearestDistance;
+    for (std::size_t routePosition = nearestPosition + 1; routePosition < activeRoute.size(); ++routePosition)
+    {
+        const int previousNode = activeRoute[routePosition - 1];
+        const int currentNode = activeRoute[routePosition];
+        if (previousNode < 0 || currentNode < 0 ||
+            previousNode >= static_cast<int>(parkingGraph.nodes.size()) ||
+            currentNode >= static_cast<int>(parkingGraph.nodes.size()))
+        {
+            continue;
+        }
+        total += glm::length(parkingGraph.nodes[currentNode] - parkingGraph.nodes[previousNode]);
+    }
+    return total;
+}
+
+std::string currentNavigationInstruction(const glm::vec3& vehiclePosition)
+{
+    if (activeRoute.empty())
+        return mainVehicleParkedSlotIndex >= 0
+            ? "Vehiculo estacionado"
+            : "Sin ruta activa";
+
+    std::size_t nearestPosition = 0;
+    float nearestDistance = std::numeric_limits<float>::infinity();
+    for (std::size_t routePosition = 0; routePosition < activeRoute.size(); ++routePosition)
+    {
+        const int nodeIndex = activeRoute[routePosition];
+        if (nodeIndex < 0 || nodeIndex >= static_cast<int>(parkingGraph.nodes.size()))
+            continue;
+        const float distance = glm::length(parkingGraph.nodes[nodeIndex] - vehiclePosition);
+        if (distance < nearestDistance)
+        {
+            nearestDistance = distance;
+            nearestPosition = routePosition;
+        }
+    }
+
+    const std::size_t targetPosition = std::min(nearestPosition + 1, activeRoute.size() - 1);
+    const int nextNode = activeRoute[targetPosition];
+    const glm::vec3 target = parkingGraph.nodes[nextNode];
+    const int currentFloor = floorFromWorldHeight(vehiclePosition.y);
+    const int nextFloor = floorFromWorldHeight(target.y);
+    if (nextFloor > currentFloor)
+        return "Suba por la rampa izquierda";
+    if (nextFloor < currentFloor)
+        return "Baje por la rampa derecha";
+
+    if (guidanceTarget == GuidanceTarget::Exit && nextFloor == 0 && target.z > 32.0f)
+        return "Continue hacia la salida principal";
+
+    const glm::vec3 direction = target - vehiclePosition;
+    if (std::abs(direction.x) > std::abs(direction.z))
+        return direction.x >= 0.0f ? "Gire a la derecha" : "Gire a la izquierda";
+    return "Continue recto";
+}
+
 void exportParkingStateJson()
 {
     try
@@ -2096,7 +2572,6 @@ void exportParkingStateJson()
         int occupied = 0;
         int reserved = 0;
         int disabled = 0;
-
         std::array<int, 4> floorAvailable{};
         std::array<int, 4> floorOccupied{};
         std::array<int, 4> floorReserved{};
@@ -2108,51 +2583,24 @@ void exportParkingStateJson()
             ++floorTotal[slot.floorIndex];
             switch (slot.state)
             {
-            case SlotState::Available:
-                ++available;
-                ++floorAvailable[slot.floorIndex];
-                break;
-            case SlotState::Occupied:
-                ++occupied;
-                ++floorOccupied[slot.floorIndex];
-                break;
-            case SlotState::Reserved:
-                ++reserved;
-                ++floorReserved[slot.floorIndex];
-                break;
-            case SlotState::Disabled:
-                ++disabled;
-                ++floorDisabled[slot.floorIndex];
-                break;
+            case SlotState::Available: ++available; ++floorAvailable[slot.floorIndex]; break;
+            case SlotState::Occupied:  ++occupied;  ++floorOccupied[slot.floorIndex]; break;
+            case SlotState::Reserved:  ++reserved;  ++floorReserved[slot.floorIndex]; break;
+            case SlotState::Disabled:  ++disabled;  ++floorDisabled[slot.floorIndex]; break;
             }
         }
 
-        const std::array<std::string, 4> floorIds = {
-            "PB", "P1", "P2", "P3"
-        };
+        const std::array<std::string, 4> floorIds = { "PB", "P1", "P2", "P3" };
         const std::array<std::string, 4> floorNames = {
             "Planta Baja", "Piso 1", "Piso 2", "Piso 3"
         };
 
         const std::string reservedId =
-            reservedSlotIndex >= 0 &&
-            reservedSlotIndex < static_cast<int>(parkingSlots.size())
-            ? parkingSlots[reservedSlotIndex].id
-            : "";
-
-        output << "{\n";
-        output << "  \"version\": 4,\n";
-        output << "  \"simulation_time_seconds\": "
-            << std::fixed << std::setprecision(2) << glfwGetTime() << ",\n";
-        output << "  \"total_slots\": " << parkingSlots.size() << ",\n";
-        output << "  \"available\": " << available << ",\n";
-        output << "  \"occupied\": " << occupied << ",\n";
-        output << "  \"reserved\": " << reserved << ",\n";
-        output << "  \"disabled\": " << disabled << ",\n";
-        output << "  \"guidance_active\": "
-            << (!activeRoute.empty() ? "true" : "false") << ",\n";
-        output << "  \"reserved_slot_id\": \"" << reservedId << "\",\n";
-
+            reservedSlotIndex >= 0 && reservedSlotIndex < static_cast<int>(parkingSlots.size())
+            ? parkingSlots[reservedSlotIndex].id : "";
+        const std::string parkedSlotId =
+            mainVehicleParkedSlotIndex >= 0 && mainVehicleParkedSlotIndex < static_cast<int>(parkingSlots.size())
+            ? parkingSlots[mainVehicleParkedSlotIndex].id : "";
         const std::string guidanceType =
             guidanceTarget == GuidanceTarget::ParkingSlot ? "PARKING" :
             guidanceTarget == GuidanceTarget::Exit ? "EXIT" : "NONE";
@@ -2160,29 +2608,91 @@ void exportParkingStateJson()
             guidanceTarget == GuidanceTarget::ParkingSlot ? reservedId :
             guidanceTarget == GuidanceTarget::Exit ? "SALIDA" : "";
         const int selectedIndex = getSelectedPhoneSlotIndex();
-        const std::string selectedSlotId =
-            selectedIndex >= 0 ? parkingSlots[selectedIndex].id : "";
+        const std::string selectedSlotId = selectedIndex >= 0 ? parkingSlots[selectedIndex].id : "";
 
+        const glm::vec3 vehiclePosition = controlledVehicle != nullptr
+            ? controlledVehicle->getPosition() : glm::vec3(0.0f);
+        const float physicalHeading = controlledVehicle != nullptr
+            ? std::fmod(controlledVehicle->getRotation() + 145.0f + 360.0f, 360.0f)
+            : 0.0f;
+        const float speedKmh = controlledVehicle != nullptr
+            ? std::abs(controlledVehicle->getSpeed()) * 3.6f : 0.0f;
+        int vehicleFloor = floorFromWorldHeight(vehiclePosition.y);
+        const bool onStreet = vehiclePosition.z >= 46.18f && vehiclePosition.y < -2.0f;
+        if (onStreet)
+            vehicleFloor = -1;
+        const std::string vehicleFloorName = onStreet
+            ? "Calle"
+            : floorNames[std::clamp(vehicleFloor, 0, 3)];
+        const float remainingDistance = calculateRemainingRouteDistance(vehiclePosition);
+        const std::string instruction = currentNavigationInstruction(vehiclePosition);
+
+        output << std::fixed << std::setprecision(3);
+        output << "{\n";
+        output << "  \"version\": 6,\n";
+        output << "  \"simulation_time_seconds\": " << glfwGetTime() << ",\n";
+        output << "  \"total_slots\": " << parkingSlots.size() << ",\n";
+        output << "  \"available\": " << available << ",\n";
+        output << "  \"occupied\": " << occupied << ",\n";
+        output << "  \"reserved\": " << reserved << ",\n";
+        output << "  \"disabled\": " << disabled << ",\n";
+        output << "  \"guidance_active\": " << (!activeRoute.empty() ? "true" : "false") << ",\n";
+        output << "  \"reserved_slot_id\": \"" << reservedId << "\",\n";
         output << "  \"guidance_type\": \"" << guidanceType << "\",\n";
         output << "  \"route_target_id\": \"" << routeTargetId << "\",\n";
         output << "  \"selected_slot_id\": \"" << selectedSlotId << "\",\n";
         output << "  \"last_command_id\": \"" << lastProcessedCommandId << "\",\n";
 
+        output << "  \"vehicle\": {\n";
+        output << "    \"x\": " << vehiclePosition.x << ",\n";
+        output << "    \"y\": " << vehiclePosition.y << ",\n";
+        output << "    \"z\": " << vehiclePosition.z << ",\n";
+        output << "    \"floor\": " << vehicleFloor << ",\n";
+        output << "    \"floor_name\": \"" << vehicleFloorName << "\",\n";
+        output << "    \"heading_degrees\": " << physicalHeading << ",\n";
+        output << "    \"speed_kmh\": " << speedKmh << ",\n";
+        output << "    \"parked_slot_id\": \"" << parkedSlotId << "\"\n";
+        output << "  },\n";
+
+        output << "  \"navigation\": {\n";
+        output << "    \"active\": " << (!activeRoute.empty() ? "true" : "false") << ",\n";
+        output << "    \"type\": \"" << guidanceType << "\",\n";
+        output << "    \"destination\": \"" << routeTargetId << "\",\n";
+        output << "    \"destination_floor\": "
+               << (reservedSlotIndex >= 0 ? parkingSlots[reservedSlotIndex].floorIndex : 0) << ",\n";
+        output << "    \"distance_remaining\": " << remainingDistance << ",\n";
+        output << "    \"instruction\": \"" << instruction << "\",\n";
+        output << "    \"route\": [\n";
+        bool firstRoutePoint = true;
+        for (const int nodeIndex : activeRoute)
+        {
+            if (nodeIndex < 0 || nodeIndex >= static_cast<int>(parkingGraph.nodes.size()))
+                continue;
+            const glm::vec3& point = parkingGraph.nodes[nodeIndex];
+            if (!firstRoutePoint)
+                output << ",\n";
+            firstRoutePoint = false;
+            output << "      {\"x\":" << point.x
+                   << ",\"y\":" << point.y
+                   << ",\"z\":" << point.z
+                   << ",\"floor\":" << floorFromWorldHeight(point.y) << "}";
+        }
+        if (!firstRoutePoint)
+            output << '\n';
+        output << "    ]\n";
+        output << "  },\n";
+
         output << "  \"floors\": [\n";
         for (int floor = 0; floor < 4; ++floor)
         {
-            output
-                << "    {"
-                << "\"id\":\"" << floorIds[floor] << "\","
-                << "\"name\":\"" << floorNames[floor] << "\","
-                << "\"level\":" << floor << ','
-                << "\"total\":" << floorTotal[floor] << ','
-                << "\"available\":" << floorAvailable[floor] << ','
-                << "\"occupied\":" << floorOccupied[floor] << ','
-                << "\"reserved\":" << floorReserved[floor] << ','
-                << "\"disabled\":" << floorDisabled[floor]
-                << '}';
-
+            output << "    {\"id\":\"" << floorIds[floor]
+                   << "\",\"name\":\"" << floorNames[floor]
+                   << "\",\"level\":" << floor
+                   << ",\"total\":" << floorTotal[floor]
+                   << ",\"available\":" << floorAvailable[floor]
+                   << ",\"occupied\":" << floorOccupied[floor]
+                   << ",\"reserved\":" << floorReserved[floor]
+                   << ",\"disabled\":" << floorDisabled[floor] << "}";
             if (floor < 3)
                 output << ',';
             output << '\n';
@@ -2193,30 +2703,27 @@ void exportParkingStateJson()
         for (std::size_t i = 0; i < parkingSlots.size(); ++i)
         {
             const ParkingSlot& slot = parkingSlots[i];
-            output
-                << "    {"
-                << "\"id\":\"" << slot.id << "\","
-                << "\"floor\":\"" << slot.floorId << "\","
-                << "\"floor_index\":" << slot.floorIndex << ','
-                << "\"row\":\"" << slot.row << "\","
-                << "\"number\":" << slot.number << ','
-                << "\"state\":\"" << slotStateName(slot.state) << "\""
-                << '}';
-
+            output << "    {\"id\":\"" << slot.id
+                   << "\",\"floor\":\"" << slot.floorId
+                   << "\",\"floor_index\":" << slot.floorIndex
+                   << ",\"row\":\"" << slot.row
+                   << "\",\"number\":" << slot.number
+                   << ",\"state\":\"" << slotStateName(slot.state)
+                   << "\",\"x\":" << slot.position.x
+                   << ",\"y\":" << slot.position.y
+                   << ",\"z\":" << slot.position.z
+                   << ",\"car_type\":" << slot.carType << "}";
             if (i + 1 < parkingSlots.size())
                 output << ',';
             output << '\n';
         }
-
         output << "  ]\n";
         output << "}\n";
     }
     catch (const std::exception& exception)
     {
-        std::cerr
-            << "No se pudo escribir parking_state.json: "
-            << exception.what()
-            << '\n';
+        std::cerr << "No se pudo escribir parking_state.json: "
+                  << exception.what() << '\n';
     }
 }
 
@@ -2262,57 +2769,87 @@ void drawFallbackCar(Shader& primitiveShader, unsigned int cubeVAO, const Parkin
 {
     const int carType = std::clamp(slot.carType, 0, static_cast<int>(carPresets.size()) - 1);
     const glm::vec4 bodyColor = carPresets[carType].fallbackColor;
-
     const float rotation = slot.rotationYDegrees;
-    drawCube(
-        primitiveShader,
-        cubeVAO,
-        slot.position + glm::vec3(0.0f, 0.72f, 0.0f),
-        glm::vec3(2.30f, 0.68f, 4.20f),
-        rotation,
-        bodyColor
-    );
-    drawCube(
-        primitiveShader,
-        cubeVAO,
-        slot.position + glm::vec3(0.0f, 1.55f, -0.25f),
-        glm::vec3(1.75f, 0.72f, 2.15f),
-        rotation,
-        glm::vec4(bodyColor.r * 0.82f, bodyColor.g * 0.82f, bodyColor.b * 0.82f, 1.0f)
-    );
-
-    const glm::vec4 wheelColor(0.025f, 0.025f, 0.03f, 1.0f);
-    const std::array<glm::vec3, 4> wheelOffsets = {
-        glm::vec3(-1.18f, 0.18f,  1.35f),
-        glm::vec3(1.18f, 0.18f,  1.35f),
-        glm::vec3(-1.18f, 0.18f, -1.35f),
-        glm::vec3(1.18f, 0.18f, -1.35f)
-    };
-
     const float radians = glm::radians(rotation);
     const float cosine = std::cos(radians);
     const float sine = std::sin(radians);
 
-    for (const glm::vec3& localOffset : wheelOffsets)
+    auto worldPoint = [&](const glm::vec3& local)
     {
-        const glm::vec3 rotatedOffset(
-            localOffset.x * cosine + localOffset.z * sine,
-            localOffset.y,
-            -localOffset.x * sine + localOffset.z * cosine
+        return slot.position + glm::vec3(
+            local.x * cosine + local.z * sine,
+            local.y,
+            -local.x * sine + local.z * cosine
         );
-        drawCube(
-            primitiveShader,
-            cubeVAO,
-            slot.position + rotatedOffset,
-            glm::vec3(0.35f, 0.42f, 0.68f),
-            rotation,
-            wheelColor
-        );
+    };
+
+    auto part = [&](const glm::vec3& local, const glm::vec3& size, const glm::vec4& color)
+    {
+        drawCube(primitiveShader, cubeVAO, worldPoint(local), size, rotation, color);
+    };
+
+    const glm::vec4 glassColor(0.08f, 0.16f, 0.22f, 1.0f);
+    const glm::vec4 darkBody(bodyColor.r * 0.72f, bodyColor.g * 0.72f, bodyColor.b * 0.72f, 1.0f);
+    const glm::vec4 wheelColor(0.022f, 0.022f, 0.026f, 1.0f);
+
+    // Cinco siluetas diferentes construidas únicamente con cubos.
+    switch (carType)
+    {
+    case 0: // Sedan
+        part(glm::vec3(0.0f, 0.68f, 0.0f), glm::vec3(2.18f, 0.62f, 4.25f), bodyColor);
+        part(glm::vec3(0.0f, 1.40f, -0.18f), glm::vec3(1.72f, 0.78f, 2.25f), darkBody);
+        part(glm::vec3(0.0f, 1.52f, -0.18f), glm::vec3(1.58f, 0.45f, 1.70f), glassColor);
+        break;
+    case 1: // Hatchback
+        part(glm::vec3(0.0f, 0.72f, 0.05f), glm::vec3(2.15f, 0.68f, 3.65f), bodyColor);
+        part(glm::vec3(0.0f, 1.48f, -0.35f), glm::vec3(1.78f, 0.92f, 2.20f), darkBody);
+        part(glm::vec3(0.0f, 1.58f, -0.25f), glm::vec3(1.58f, 0.52f, 1.62f), glassColor);
+        break;
+    case 2: // SUV
+        part(glm::vec3(0.0f, 0.82f, 0.0f), glm::vec3(2.30f, 0.82f, 4.18f), bodyColor);
+        part(glm::vec3(0.0f, 1.72f, -0.15f), glm::vec3(1.92f, 1.08f, 2.58f), darkBody);
+        part(glm::vec3(0.0f, 1.84f, -0.15f), glm::vec3(1.70f, 0.58f, 1.94f), glassColor);
+        break;
+    case 3: // Pickup
+        part(glm::vec3(0.0f, 0.78f, 0.0f), glm::vec3(2.25f, 0.72f, 4.35f), bodyColor);
+        part(glm::vec3(0.0f, 1.60f, -0.92f), glm::vec3(1.88f, 0.95f, 1.60f), darkBody);
+        part(glm::vec3(0.0f, 1.68f, -0.90f), glm::vec3(1.64f, 0.50f, 1.10f), glassColor);
+        part(glm::vec3(0.0f, 1.15f, 1.10f), glm::vec3(1.95f, 0.18f, 1.55f), glm::vec4(0.11f, 0.11f, 0.12f, 1.0f));
+        break;
+    default: // Deportivo
+        part(glm::vec3(0.0f, 0.58f, 0.0f), glm::vec3(2.22f, 0.50f, 4.30f), bodyColor);
+        part(glm::vec3(0.0f, 1.18f, -0.25f), glm::vec3(1.78f, 0.58f, 1.92f), darkBody);
+        part(glm::vec3(0.0f, 1.24f, -0.25f), glm::vec3(1.55f, 0.35f, 1.35f), glassColor);
+        part(glm::vec3(0.0f, 0.92f, 1.86f), glm::vec3(1.75f, 0.12f, 0.32f), darkBody);
+        break;
     }
+
+    const float wheelY = carType == 4 ? 0.24f : 0.30f;
+    const float wheelX = carType == 2 ? 1.20f : 1.13f;
+    const float wheelZ = carType == 1 ? 1.20f : 1.42f;
+    const glm::vec3 wheelSize = carType == 2
+        ? glm::vec3(0.38f, 0.52f, 0.72f)
+        : glm::vec3(0.34f, 0.44f, 0.66f);
+
+    for (const glm::vec3& wheelOffset : {
+        glm::vec3(-wheelX, wheelY,  wheelZ),
+        glm::vec3( wheelX, wheelY,  wheelZ),
+        glm::vec3(-wheelX, wheelY, -wheelZ),
+        glm::vec3( wheelX, wheelY, -wheelZ) })
+    {
+        part(wheelOffset, wheelSize, wheelColor);
+    }
+
+    // Faros y luces traseras ayudan a distinguir la orientación.
+    part(glm::vec3(-0.70f, 0.75f,  2.12f), glm::vec3(0.30f, 0.22f, 0.10f), glm::vec4(1.0f, 0.95f, 0.62f, 1.0f));
+    part(glm::vec3( 0.70f, 0.75f,  2.12f), glm::vec3(0.30f, 0.22f, 0.10f), glm::vec4(1.0f, 0.95f, 0.62f, 1.0f));
+    part(glm::vec3(-0.70f, 0.72f, -2.12f), glm::vec3(0.30f, 0.22f, 0.10f), glm::vec4(1.0f, 0.08f, 0.05f, 1.0f));
+    part(glm::vec3( 0.70f, 0.72f, -2.12f), glm::vec3(0.30f, 0.22f, 0.10f), glm::vec4(1.0f, 0.08f, 0.05f, 1.0f));
 }
 
 void drawParkingIndicators(Shader& primitiveShader, unsigned int cubeVAO, float currentTime)
 {
+    // Núcleo visible de cada semáforo.
     for (const ParkingSlot& slot : parkingSlots)
     {
         const float aisleOffsetZ = slot.row == 'A' ? -4.15f : 4.15f;
@@ -2336,6 +2873,31 @@ void drawParkingIndicators(Shader& primitiveShader, unsigned int cubeVAO, float 
             statusColor
         );
     }
+
+    // Halo aditivo: el cubo parece emitir el color correspondiente.
+    glDepthMask(GL_FALSE);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+    for (const ParkingSlot& slot : parkingSlots)
+    {
+        const float aisleOffsetZ = slot.row == 'A' ? -4.15f : 4.15f;
+        const glm::vec3 lampPosition =
+            slot.position + glm::vec3(0.0f, 2.75f, aisleOffsetZ);
+        glm::vec4 glow = slotStateColor(slot.state);
+        const float pulse = slot.state == SlotState::Reserved
+            ? 0.16f + 0.08f * (0.5f + 0.5f * std::sin(currentTime * 5.0f))
+            : 0.14f;
+        glow.a = pulse;
+        drawCube(
+            primitiveShader,
+            cubeVAO,
+            lampPosition,
+            glm::vec3(0.86f, 0.68f, 0.86f),
+            0.0f,
+            glow
+        );
+    }
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDepthMask(GL_TRUE);
 }
 void drawRampSafetyWalls(Shader& primitiveShader, unsigned int cubeVAO)
 {
@@ -3035,11 +3597,32 @@ void renderPhoneUI(Shader& uiShader, unsigned int uiVAO, unsigned int uiVBO)
             glm::vec4(0.28f, 1.0f, 0.48f, 1.0f)
         );
 
-        std::string routeText = "SIN GUIA ACTIVA";
+        std::string routeText;
         if (guidanceTarget == GuidanceTarget::ParkingSlot && reservedSlotIndex >= 0)
+        {
             routeText = "GUIA A: " + parkingSlots[reservedSlotIndex].id;
+        }
         else if (guidanceTarget == GuidanceTarget::Exit)
+        {
             routeText = "GUIA A: SALIDA";
+        }
+        else if (mainVehicleParkedSlotIndex >= 0 &&
+                 mainVehicleParkedSlotIndex < static_cast<int>(parkingSlots.size()))
+        {
+            routeText = "MAZDA EN: " + parkingSlots[mainVehicleParkedSlotIndex].id;
+        }
+        else if (controlledVehicle != nullptr)
+        {
+            const glm::vec3 position = controlledVehicle->getPosition();
+            std::ostringstream location;
+            location << "MAZDA X" << static_cast<int>(std::round(position.x))
+                     << " Z" << static_cast<int>(std::round(position.z));
+            routeText = location.str();
+        }
+        else
+        {
+            routeText = "SIN GUIA ACTIVA";
+        }
 
         addText(
             vertices,
@@ -3048,8 +3631,8 @@ void renderPhoneUI(Shader& uiShader, unsigned int uiVAO, unsigned int uiVBO)
             phoneY + 470.0f,
             1.45f,
             guidanceTarget == GuidanceTarget::None
-            ? glm::vec4(0.62f, 0.72f, 0.82f, 1.0f)
-            : glm::vec4(1.0f, 0.82f, 0.18f, 1.0f)
+                ? glm::vec4(0.62f, 0.72f, 0.82f, 1.0f)
+                : glm::vec4(1.0f, 0.82f, 0.18f, 1.0f)
         );
     }
 

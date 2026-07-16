@@ -1,5 +1,4 @@
 #include "Vehicle.h"
-#include "Vehicle.h"
 
 #include <algorithm>
 #include <cmath>
@@ -53,8 +52,8 @@ Vehicle::Vehicle(
 
     // Distancia aproximada entre el eje delantero y trasero.
     // Un valor mayor genera curvas más amplias.
-    wheelBase(4.0f),
-    rearAxleOffset(2.0f),
+    wheelBase(2.90f),
+    rearAxleOffset(1.45f),
 
 
     speed(0.0f),
@@ -612,25 +611,8 @@ void Vehicle::update(float deltaTime)
     {
         wheelRollingAngle += 360.0f;
     }
-    static float printTimer = 0.0f;
-
-    printTimer += deltaTime;
-
-    if (printTimer >= 0.5f)
-    {
-        std::cout
-            << "Vehicle position -> X: "
-            << position.x
-            << " Y: "
-            << position.y
-            << " Z: "
-            << position.z
-            << std::endl;
-
-        printTimer = 0.0f;
-    }
-
-
+    // La posición solo se imprime bajo demanda con la tecla O. Evitar
+    // escritura continua en consola reduce ruido y trabajo innecesario.
     updateRamp(deltaTime);
 
 }
@@ -744,10 +726,22 @@ void Vehicle::setPosition(
     initialPosition = newPosition;
 }
 
+void Vehicle::setCurrentPosition(
+    const glm::vec3& newPosition
+)
+{
+    position = newPosition;
+}
+
 void Vehicle::setRotation(float newRotation)
 {
     rotationY = newRotation;
     initialRotationY = newRotation;
+}
+
+void Vehicle::setCurrentRotation(float newRotation)
+{
+    rotationY = newRotation;
 }
 
 void Vehicle::setScale(float newScale)
@@ -819,6 +813,16 @@ float Vehicle::getPitch() const
 
 
 // ---------------------------------------------------------
+// Detención por colisión
+// ---------------------------------------------------------
+void Vehicle::stop()
+{
+    speed = 0.0f;
+    throttleInput = 0.0f;
+    braking = false;
+}
+
+// ---------------------------------------------------------
 // Reinicio
 // ---------------------------------------------------------
 void Vehicle::reset()
@@ -855,6 +859,22 @@ void Vehicle::updateRamp(float deltaTime)
         sizeof(FLOOR_HEIGHTS[0]);
 
     constexpr float suspensionHeight = 0.1f;
+
+    // Pavimento exterior situado delante de la puerta principal.
+    // Debe coincidir exactamente con la altura del extremo inferior de la
+    // rampa de entrada: FLOOR_0_Y - 2.10221 = -3.62221.
+    // Sin esta superficie, al abandonar la rampa el código elegía el piso 0
+    // (-1.52) como plano más cercano y el automóvil quedaba flotando.
+    constexpr float EXTERIOR_GROUND_Y = -3.62221f;
+    constexpr float ENTRANCE_RAMP_LOWER_Z = 46.53415f;
+    constexpr float EXTERIOR_TRANSITION_MARGIN = 0.35f;
+
+    // Todo lo que queda delante del extremo inferior de la rampa pertenece
+    // al pavimento exterior. No se limita X para que el auto siga apoyado al
+    // girar a la izquierda o derecha después de cruzar la puerta.
+    const bool onExteriorGround =
+        position.z >=
+        (ENTRANCE_RAMP_LOWER_Z - EXTERIOR_TRANSITION_MARGIN);
 
     // =====================================================
     // 1. DIRECCIÓN DEL VEHÍCULO
@@ -1163,50 +1183,63 @@ void Vehicle::updateRamp(float deltaTime)
     else
     {
         // =================================================
-        // 4. FUERA DE RAMPAS: FIJAR AL PISO MÁS CERCANO
+        // 4. FUERA DE RAMPAS: EXTERIOR O PISO MÁS CERCANO
         // =================================================
 
-        float nearestFloor =
-            FLOOR_HEIGHTS[0];
-
-        float nearestDistance =
-            std::abs(
-                position.y -
-                suspensionHeight -
-                FLOOR_HEIGHTS[0]
-            );
-
-        for (
-            int i = 1;
-            i < FLOOR_COUNT;
-            ++i
-            )
+        if (onExteriorGround)
         {
-            const float currentDistance =
+            // Mantiene las ruedas apoyadas en la calle exterior incluso si
+            // el conductor gira después de salir por la puerta principal.
+            position.y =
+                EXTERIOR_GROUND_Y +
+                suspensionHeight;
+
+            targetRotationX = 0.0f;
+        }
+        else
+        {
+            float nearestFloor =
+                FLOOR_HEIGHTS[0];
+
+            float nearestDistance =
                 std::abs(
                     position.y -
                     suspensionHeight -
-                    FLOOR_HEIGHTS[i]
+                    FLOOR_HEIGHTS[0]
                 );
 
-            if (
-                currentDistance <
-                nearestDistance
+            for (
+                int i = 1;
+                i < FLOOR_COUNT;
+                ++i
                 )
             {
-                nearestDistance =
-                    currentDistance;
+                const float currentDistance =
+                    std::abs(
+                        position.y -
+                        suspensionHeight -
+                        FLOOR_HEIGHTS[i]
+                    );
 
-                nearestFloor =
-                    FLOOR_HEIGHTS[i];
+                if (
+                    currentDistance <
+                    nearestDistance
+                    )
+                {
+                    nearestDistance =
+                        currentDistance;
+
+                    nearestFloor =
+                        FLOOR_HEIGHTS[i];
+                }
             }
+
+            position.y =
+                nearestFloor +
+                suspensionHeight;
+
+            targetRotationX = 0.0f;
         }
-
-        position.y =
-            nearestFloor +
-            suspensionHeight;
-
-        targetRotationX = 0.0f;
     }
 
     // =====================================================

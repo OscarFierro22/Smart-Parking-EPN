@@ -5,7 +5,6 @@ cd /d "%~dp0"
 where flutter >nul 2>nul
 if errorlevel 1 (
     echo ERROR: Flutter no esta instalado o no esta agregado al PATH.
-    echo Instala Flutter y ejecuta nuevamente este archivo.
     pause
     exit /b 1
 )
@@ -15,9 +14,10 @@ mkdir "%BACKUP%"
 xcopy /E /I /Y lib "%BACKUP%\lib" >nul
 copy /Y pubspec.yaml "%BACKUP%\pubspec.yaml" >nul
 
-flutter create . --project-name smart_parking_app --org ec.edu.epn.smartparking --platforms=android,windows,web
+if exist android rmdir /S /Q android
+flutter create --platforms=android --org ec.edu.epn.smartparking --project-name smart_parking_app .
 if errorlevel 1 (
-    echo ERROR: flutter create no pudo completar el proyecto.
+    echo ERROR: Flutter no pudo generar la plataforma Android moderna.
     pause
     exit /b 1
 )
@@ -28,9 +28,11 @@ copy /Y "%BACKUP%\pubspec.yaml" pubspec.yaml >nul
 copy /Y android_overlay\app\src\main\AndroidManifest.xml android\app\src\main\AndroidManifest.xml >nul
 rmdir /S /Q "%BACKUP%"
 
+flutter clean
 flutter pub get
+flutter analyze
 
 echo.
-echo Proyecto Flutter preparado correctamente.
-echo Para ejecutarlo conecta el celular y usa: flutter run
+echo Proyecto Android preparado con Flutter embedding v2.
+echo Conecta el celular y ejecuta EJECUTAR_FLUTTER.bat.
 pause

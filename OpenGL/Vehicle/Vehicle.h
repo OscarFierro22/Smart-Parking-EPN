@@ -41,7 +41,11 @@ public:
 
     // Configuración inicial.
     void setPosition(const glm::vec3& newPosition);
+    // Cambia solo la posición actual, sin modificar el punto de reinicio.
+    void setCurrentPosition(const glm::vec3& newPosition);
     void setRotation(float newRotation);
+    // Cambia solo la rotacion actual, sin modificar el reinicio.
+    void setCurrentRotation(float newRotation);
     void setScale(float newScale);
     void setForwardOffset(float offset);
 
@@ -64,6 +68,9 @@ public:
         bool brake,
         bool reset
     );
+    // Detiene inmediatamente el automóvil después de una colisión.
+    void stop();
+
     // Reinicia el automóvil.
     void reset();
 

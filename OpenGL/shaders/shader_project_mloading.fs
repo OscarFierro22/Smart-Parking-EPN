@@ -6,20 +6,11 @@ in vec3 FragPos;
 in vec3 Normal;
 in vec2 TexCoords;
 
-// =========================================================
-// CONFIGURACIÓN DE LUCES
-// =========================================================
-
-/*
-    Se conserva la capacidad del repositorio para manejar
-    las 108 luces del parqueadero.
-*/
-#define MAX_POINT_LIGHTS 108
+#define MAX_POINT_LIGHTS 24
 
 struct PointLight
 {
     vec3 position;
-
     vec3 ambient;
     vec3 diffuse;
     vec3 specular;
@@ -30,22 +21,9 @@ struct PointLight
 };
 
 uniform PointLight pointLights[MAX_POINT_LIGHTS];
-
-/*
-    Permite indicar desde C++ cuántas luces están activas.
-
-    Si el código todavía no envía este uniform, su valor
-    será cero y el shader utilizará las 108 luces para
-    mantener compatibilidad con el repositorio.
-*/
 uniform int activePointLights;
 
 uniform vec3 viewPos;
-
-/*
-    0.0 = noche.
-    1.0 = día.
-*/
 uniform float dayFactor;
 
 // =========================================================
@@ -54,14 +32,16 @@ uniform float dayFactor;
 
 uniform vec3 materialDiffuse;
 uniform vec3 materialSpecular;
+uniform vec3 materialEmissive;
 
 uniform float materialShininess;
+uniform float emissiveStrength;
 uniform float materialOpacity;
 
 uniform bool materialMetallic;
 
 // =========================================================
-// CALCULAR UNA LUZ PUNTUAL
+// LUZ PUNTUAL
 // =========================================================
 
 vec3 calculatePointLight(
@@ -77,18 +57,12 @@ vec3 calculatePointLight(
             fragmentPosition
         );
 
-    // -----------------------------------------------------
-    // Componente ambiental
-    // -----------------------------------------------------
-
+    // Iluminación ambiental.
     vec3 ambient =
         light.ambient *
         materialDiffuse;
 
-    // -----------------------------------------------------
-    // Componente difusa
-    // -----------------------------------------------------
-
+    // Iluminación difusa.
     float diffuseIntensity =
         max(
             dot(
@@ -103,13 +77,13 @@ vec3 calculatePointLight(
         diffuseIntensity *
         materialDiffuse;
 
-    // -----------------------------------------------------
-    // Componente especular mediante Blinn-Phong
-    // -----------------------------------------------------
+    // =====================================================
+    // ILUMINACIÓN ESPECULAR
+    // =====================================================
 
     /*
-        Blinn-Phong genera un brillo más estable para la
-        pintura y los materiales metálicos del vehículo.
+        Usamos Blinn-Phong para obtener un reflejo
+        más estable sobre la pintura del automóvil.
     */
     vec3 halfwayDirection =
         normalize(
@@ -145,8 +119,8 @@ vec3 calculatePointLight(
     if (materialMetallic)
     {
         /*
-            En superficies metálicas, una parte del reflejo
-            adopta el color propio del material.
+            Los materiales metálicos reflejan parte
+            del color propio de la superficie.
         */
         finalSpecularColor =
             mix(
@@ -165,9 +139,9 @@ vec3 calculatePointLight(
         finalSpecularColor *
         specularMultiplier;
 
-    // -----------------------------------------------------
-    // Atenuación por distancia
-    // -----------------------------------------------------
+    // =====================================================
+    // ATENUACIÓN
+    // =====================================================
 
     float distanceValue =
         length(
@@ -175,36 +149,26 @@ vec3 calculatePointLight(
             fragmentPosition
         );
 
-    float attenuationDenominator =
-        light.constant +
-        light.linear *
-        distanceValue +
-        light.quadratic *
-        distanceValue *
-        distanceValue;
-
-    /*
-        Se evita una división por cero en caso de que una
-        luz tenga parámetros de atenuación incorrectos.
-    */
     float attenuation =
         1.0 /
-        max(
-            attenuationDenominator,
-            0.0001
+        (
+            light.constant +
+            light.linear *
+            distanceValue +
+            light.quadratic *
+            distanceValue *
+            distanceValue
         );
 
-    return
-        (
-            ambient +
-            diffuse +
-            specular
-        ) *
-        attenuation;
+    return (
+        ambient +
+        diffuse +
+        specular
+    ) * attenuation;
 }
 
 // =========================================================
-// CALCULAR ILUMINACIÓN DIURNA
+// LUZ DIURNA
 // =========================================================
 
 vec3 calculateDayLight(
@@ -212,9 +176,6 @@ vec3 calculateDayLight(
     vec3 viewDirection
 )
 {
-    /*
-        Dirección desde el fragmento hacia el sol.
-    */
     vec3 sunDirection =
         normalize(
             vec3(
@@ -231,10 +192,7 @@ vec3 calculateDayLight(
             0.82
         );
 
-    // -----------------------------------------------------
-    // Luz ambiental diurna
-    // -----------------------------------------------------
-
+    // Luz ambiental diurna.
     vec3 ambient =
         materialDiffuse *
         vec3(
@@ -243,10 +201,7 @@ vec3 calculateDayLight(
             0.64
         );
 
-    // -----------------------------------------------------
-    // Luz difusa diurna
-    // -----------------------------------------------------
-
+    // Luz difusa diurna.
     float diffuseIntensity =
         max(
             dot(
@@ -262,9 +217,9 @@ vec3 calculateDayLight(
         diffuseIntensity *
         0.95;
 
-    // -----------------------------------------------------
-    // Luz especular diurna
-    // -----------------------------------------------------
+    // =====================================================
+    // BRILLO DIURNO
+    // =====================================================
 
     vec3 halfwayDirection =
         normalize(
@@ -329,9 +284,7 @@ vec3 calculateDayLight(
 void main()
 {
     vec3 normalizedNormal =
-        normalize(
-            Normal
-        );
+        normalize(Normal);
 
     vec3 viewDirection =
         normalize(
@@ -340,68 +293,17 @@ void main()
         );
 
     // =====================================================
-    // DETERMINAR EL NÚMERO DE LUCES
+    // LUCES PUNTUALES (TECHO + ESTADOS)
     // =====================================================
 
-    int lightCount =
-        activePointLights;
-
-    /*
-        Compatibilidad con el código actual del repositorio:
-
-        si activePointLights todavía no se configura desde
-        C++, su valor será cero y se utilizarán las 108 luces.
-    */
-    if (
-        lightCount <= 0
-    )
-    {
-        lightCount =
-            MAX_POINT_LIGHTS;
-    }
-
-    lightCount =
-        clamp(
-            lightCount,
-            0,
-            MAX_POINT_LIGHTS
-        );
-
-    // =====================================================
-    // RESULTADO NOCTURNO
-    // =====================================================
-
-    /*
-        Se agrega una iluminación ambiental mínima para
-        evitar que las superficies sin una luz cercana se
-        vuelvan completamente negras.
-    */
-    vec3 nightResult =
-        materialDiffuse *
-        vec3(
-            0.008,
-            0.010,
-            0.018
-        );
-
+    vec3 pointLightResult = vec3(0.0);
     for (
         int i = 0;
-        i < MAX_POINT_LIGHTS;
+        i < activePointLights;
         ++i
     )
     {
-        /*
-            En GLSL resulta más compatible mantener un límite
-            constante y detener el ciclo según lightCount.
-        */
-        if (
-            i >= lightCount
-        )
-        {
-            break;
-        }
-
-        nightResult +=
+        pointLightResult +=
             calculatePointLight(
                 pointLights[i],
                 normalizedNormal,
@@ -411,32 +313,47 @@ void main()
     }
 
     // =====================================================
+    // RESULTADO NOCTURNO
+    // =====================================================
+
+    vec3 nightResult =
+        materialDiffuse *
+        vec3(
+            0.008,
+            0.010,
+            0.018
+        ) +
+        pointLightResult;
+
+    // =====================================================
     // RESULTADO DIURNO
     // =====================================================
 
+    // Los focos siguen existiendo durante el dia, aunque su contribucion se
+    // reduce porque la iluminacion solar domina la escena.
     vec3 dayResult =
         calculateDayLight(
             normalizedNormal,
             viewDirection
-        );
+        ) +
+        pointLightResult * 0.22;
 
-    // =====================================================
-    // TRANSICIÓN NOCHE-DÍA
-    // =====================================================
-
-    float safeDayFactor =
-        clamp(
-            dayFactor,
-            0.0,
-            1.0
-        );
-
+    // Transición entre noche y día.
     vec3 result =
         mix(
             nightResult,
             dayResult,
-            safeDayFactor
+            clamp(
+                dayFactor,
+                0.0,
+                1.0
+            )
         );
+
+    // El material emisivo hace visibles los tubos reales del OBJ de los
+    // focos. No ilumina por sí solo; la iluminación del entorno proviene de
+    // los point lights colocados en la misma posición física.
+    result += materialEmissive * max(emissiveStrength, 0.0);
 
     // =====================================================
     // COLOR Y TRANSPARENCIA FINAL
