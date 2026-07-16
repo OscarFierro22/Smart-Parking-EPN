@@ -138,6 +138,8 @@
   <ItemGroup>
     <ClCompile Include="..\OpenGL_Stuff\Library\glad.c" />
     <ClCompile Include="Proyecto_Final.cpp" />
+    <ClCompile Include="Vehicle\Vehicle.cpp" />
+    <ClCompile Include="Vehicle\Wheel.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="shaders\floor.fs" />

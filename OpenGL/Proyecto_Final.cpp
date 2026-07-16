@@ -10,6 +10,8 @@
 #include <learnopengl/model.h>
 #include <learnopengl/CollisionMesh.h>
 
+#include "Vehicle/Vehicle.h"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -21,6 +23,7 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <queue>
 #include <random>
 #include <sstream>
@@ -32,24 +35,26 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <learnopengl/stb_image.h>
 
-// Esta version parte del escenario original sin reemplazar cielo, piso,
-// modelos, materiales ni lamparas. Solo agrega Dijkstra, panel celular,
-// luces de estado y colisiones solidas para los pilares.
-
 namespace fs = std::filesystem;
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
-void processInput(GLFWwindow* window);
+void processInput(GLFWwindow* window, Vehicle& vehicle);
+void processGamepadInput(Vehicle& vehicle);
+glm::mat4 getVehicleCameraView(const Vehicle& vehicle);
+glm::vec3 getActiveCameraPosition(const Vehicle& vehicle);
+void updateThirdPersonCameraReturn(float deltaTime);
+void resetThirdPersonCameraOffset();
+glm::vec3 getSimulationPosition();
 
-const unsigned int SCR_WIDTH = 800;
-const unsigned int SCR_HEIGHT = 600;
+const unsigned int SCR_WIDTH = 1280;
+const unsigned int SCR_HEIGHT = 720;
 
 int framebufferWidth = static_cast<int>(SCR_WIDTH);
 int framebufferHeight = static_cast<int>(SCR_HEIGHT);
 
-Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
+Camera camera(glm::vec3(0.0f, 8.0f, 95.0f));
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
@@ -57,11 +62,43 @@ bool firstMouse = true;
 // Colision exacta contra la geometria real de parking.obj.
 CollisionMesh parkingCollision;
 
+// =========================================================
+// VEHÍCULO Y CÁMARAS INTEGRADAS
+// =========================================================
+enum class CameraMode
+{
+    FREE = 1,
+    THIRD_PERSON = 2,
+    DRIVER = 3
+};
+
+CameraMode cameraMode = CameraMode::FREE;
+
+float thirdPersonYawOffset = 0.0f;
+float thirdPersonPitchOffset = 0.0f;
+float lastThirdPersonMouseTime = 0.0f;
+
+constexpr float THIRD_PERSON_RETURN_DELAY = 0.8f;
+constexpr float THIRD_PERSON_RETURN_SPEED = 3.5f;
+constexpr float THIRD_PERSON_MOUSE_SENSITIVITY = 0.18f;
+
+bool leftBumperPressed = false;
+bool rightBumperPressed = false;
+bool key1Pressed = false;
+bool key2Pressed = false;
+bool key3Pressed = false;
+
+bool cameraPositionKeyPressed = false;
+bool vehiclePositionKeyPressed = false;
+
+constexpr glm::vec3 VEHICLE_COLLISION_HALF_SIZE(1.25f, 0.85f, 2.30f);
+Vehicle* controlledVehicle = nullptr;
+
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
-bool dayMode = false;
-float dayFactor = 0.0f;
+bool dayMode = true;
+float dayFactor = 1.0f;
 bool phoneVisible = true;
 bool keyWasDown[GLFW_KEY_LAST + 1]{};
 
@@ -69,6 +106,7 @@ float noticeTimer = 0.0f;
 std::string noticeTitle;
 std::string noticeSubtitle;
 
+constexpr int MAX_RENDERED_POINT_LIGHTS = 24;
 constexpr float PI_VALUE = 3.14159265359f;
 
 enum class SlotState
@@ -97,6 +135,7 @@ struct ParkingSlot
     float rotationYDegrees;
     SlotState state;
     int graphNode;
+    int carType;
 };
 
 struct Edge
@@ -125,6 +164,15 @@ struct UIVertex
     glm::vec4 color;
 };
 
+struct CarPreset
+{
+    std::string path;
+    float scale;
+    float rotationOffsetDegrees;
+    glm::vec3 positionOffset;
+    glm::vec4 fallbackColor;
+};
+
 struct CollisionBox
 {
     glm::vec3 center;
@@ -137,6 +185,8 @@ ParkingGraph parkingGraph;
 std::vector<int> activeRoute;
 std::vector<int> occupiedHistory;
 int reservedSlotIndex = -1;
+int nextSpawnSearchIndex = 0;
+int selectedCarType = 0;
 int selectedPhoneFloor = 0;
 int selectedPhoneSlotOrdinal = 2;
 GuidanceTarget guidanceTarget = GuidanceTarget::None;
@@ -144,8 +194,36 @@ bool noticeSuccessStyle = false;
 std::mt19937 randomEngine{ std::random_device{}() };
 double lastCommandCheckTime = 0.0;
 std::string lastProcessedCommandId;
+std::array<std::unique_ptr<Model>, 3> carModels;
+std::array<bool, 3> carModelLoaded{ false, false, false };
 std::vector<CollisionBox> staticCollisionBoxes;
 constexpr glm::vec3 CAMERA_COLLISION_HALF_SIZE(0.65f, 1.15f, 0.65f);
+
+const std::array<CarPreset, 3> carPresets = {
+    CarPreset{
+        "model/cars/car1/car.obj",
+        1.0f,
+        0.0f,
+        glm::vec3(0.0f),
+        glm::vec4(0.13f, 0.48f, 0.95f, 1.0f)
+    },
+    CarPreset{
+        "model/cars/car2/car.obj",
+        1.0f,
+        0.0f,
+        glm::vec3(0.0f),
+        glm::vec4(0.92f, 0.18f, 0.16f, 1.0f)
+    },
+    CarPreset{
+        "model/cars/car3/car.obj",
+        1.0f,
+        0.0f,
+        glm::vec3(0.0f),
+        glm::vec4(0.96f, 0.72f, 0.12f, 1.0f)
+    }
+};
+
+std::vector<glm::vec3> allLampLightPositions;
 
 bool pressedOnce(GLFWwindow* window, int key);
 std::vector<ParkingSlot> createParkingSlots();
@@ -174,6 +252,8 @@ int findNearestGraphNode(const glm::vec3& position);
 int getSelectedPhoneSlotIndex();
 void movePhoneSelection(int direction);
 void simulateRandomOccupancy();
+void spawnCarInNextAvailableSlot();
+void removeLastSpawnedCar();
 void completeReservedParking();
 void updateAutomaticArrival();
 void processExternalCommands();
@@ -270,24 +350,24 @@ void drawArrow(
     const glm::vec3 right = glm::normalize(glm::cross(referenceUp, direction));
 
     auto drawBetween = [&](const glm::vec3& startPoint,
-                           const glm::vec3& endPoint,
-                           float width,
-                           float height,
-                           const glm::vec4& drawColor)
-    {
-        const glm::vec3 segment = endPoint - startPoint;
-        const float length = glm::length(segment);
-        if (length < 0.0001f)
-            return;
-        drawOrientedBox(
-            shader,
-            cubeVAO,
-            (startPoint + endPoint) * 0.5f,
-            glm::vec3(width, height, length),
-            segment,
-            drawColor
-        );
-    };
+        const glm::vec3& endPoint,
+        float width,
+        float height,
+        const glm::vec4& drawColor)
+        {
+            const glm::vec3 segment = endPoint - startPoint;
+            const float length = glm::length(segment);
+            if (length < 0.0001f)
+                return;
+            drawOrientedBox(
+                shader,
+                cubeVAO,
+                (startPoint + endPoint) * 0.5f,
+                glm::vec3(width, height, length),
+                segment,
+                drawColor
+            );
+        };
 
     const glm::vec3 shaftStart = center - direction * (0.95f * size);
     const glm::vec3 shaftEnd = center + direction * (0.35f * size);
@@ -309,7 +389,15 @@ void drawArrow(
     drawBetween(rightBase, tip, 0.20f * size, 0.075f, color);
 }
 
+void drawFallbackCar(Shader& primitiveShader, unsigned int cubeVAO, const ParkingSlot& slot);
 void drawParkingIndicators(Shader& primitiveShader, unsigned int cubeVAO, float currentTime);
+void drawTrafficArrows(Shader& primitiveShader, unsigned int cubeVAO);
+void drawRampSafetyWalls(Shader& primitiveShader, unsigned int cubeVAO);
+void drawRestrictedCorridorBarriers(
+    Shader& primitiveShader,
+    unsigned int cubeVAO,
+    float currentTime
+);
 void drawGuidanceRoute(
     Shader& primitiveShader,
     unsigned int routeVAO,
@@ -333,7 +421,7 @@ int main()
     GLFWwindow* window = glfwCreateWindow(
         SCR_WIDTH,
         SCR_HEIGHT,
-        "Smart Parking",
+        "Smart Parking - Fase 4",
         nullptr,
         nullptr
     );
@@ -388,10 +476,11 @@ int main()
 
     Model parkingModel("model/parking/parking.obj");
     Model lightModel("model/ceilinglight/ceilinglight.obj");
+    Model streetModel("model/street/street.obj");
     Model nightSkyModel("model/night_sky/night_sky.obj");
 
     // La misma malla OBJ que se dibuja se utiliza para impedir que la
-    // camara atraviese paredes, columnas, pisos, rampas y barandas.
+    // camara libre atraviese paredes, columnas, pisos, rampas y barandas.
     if (!parkingCollision.loadFromObj("model/parking/parking.obj"))
     {
         std::cerr << "No se pudo cargar parking.obj para colisiones exactas.\n";
@@ -404,9 +493,41 @@ int main()
         glm::vec3(93.90f, 11.20f, 69.50f)
     );
 
+    // =====================================================
+    // VEHÍCULO CONTROLABLE
+    // =====================================================
+    Vehicle vehicle(
+        "model/Vehicle/Body.obj",
+        "model/Vehicle/Wheel_FL.obj",
+        "model/Vehicle/Wheel_FR.obj",
+        "model/Vehicle/Wheel_BL.obj",
+        "model/Vehicle/Wheel_BR.obj"
+    );
 
-    // No se cargan ni se dibujan vehiculos. La ocupacion se
-    // representa exclusivamente mediante las luces de cada parqueadero.
+    // Posición inicial provisional en la entrada del escenario.
+    vehicle.setPosition(glm::vec3(15.0f, -1.55f, 40.5f));
+    vehicle.setRotation(35.0f);
+    vehicle.setScale(2.0f);
+    vehicle.setForwardOffset(145.0f);
+    vehicle.setModelPivotOffset(glm::vec3(0.0f));
+    controlledVehicle = &vehicle;
+
+    for (std::size_t i = 0; i < carPresets.size(); ++i)
+    {
+        if (fs::exists(carPresets[i].path))
+        {
+            std::cout << "Cargando modelo de carro: " << carPresets[i].path << '\n';
+            carModels[i] = std::make_unique<Model>(carPresets[i].path);
+            carModelLoaded[i] = !carModels[i]->meshes.empty();
+        }
+        else
+        {
+            std::cout
+                << "Modelo no encontrado: " << carPresets[i].path
+                << ". Se usara el carro procedural de respaldo.\n";
+        }
+    }
+
     camera.MovementSpeed = 30.0f;
 
     parkingSlots = createParkingSlots();
@@ -497,41 +618,48 @@ int main()
 
     const std::array<glm::vec3, 54> lampPositions = {
         glm::vec3(-15.2176f,  4.5834f,  8.7f), glm::vec3(-15.2176f,  4.5834f, -4.7f),
-        glm::vec3( -5.2176f,  4.5834f,  8.7f), glm::vec3( -5.2176f,  4.5834f, -4.7f),
-        glm::vec3( 18.2180f,  4.5834f,  8.7f), glm::vec3( 18.2180f,  4.5834f, -4.7f),
-        glm::vec3(  8.2180f,  4.5834f,  8.7f), glm::vec3(  8.2180f,  4.5834f, -4.7f),
-        glm::vec3( 23.7700f,  4.5834f, 20.0f), glm::vec3(  0.8734f,  4.5834f, 20.0f),
-        glm::vec3(-22.0232f,  4.5834f, 20.0f), glm::vec3( 36.8090f,  4.5834f, 20.0f),
-        glm::vec3(-36.8090f,  4.5834f, 20.0f), glm::vec3( 23.7700f,  4.5834f,-23.0f),
-        glm::vec3(  0.8734f,  4.5834f,-23.0f), glm::vec3(-22.0232f,  4.5834f,-23.0f),
-        glm::vec3( 36.8090f,  4.5834f,-23.0f), glm::vec3(-36.8090f,  4.5834f,-23.0f),
+        glm::vec3(-5.2176f,  4.5834f,  8.7f), glm::vec3(-5.2176f,  4.5834f, -4.7f),
+        glm::vec3(18.2180f,  4.5834f,  8.7f), glm::vec3(18.2180f,  4.5834f, -4.7f),
+        glm::vec3(8.2180f,  4.5834f,  8.7f), glm::vec3(8.2180f,  4.5834f, -4.7f),
+        glm::vec3(23.7700f,  4.5834f, 20.0f), glm::vec3(0.8734f,  4.5834f, 20.0f),
+        glm::vec3(-22.0232f,  4.5834f, 20.0f), glm::vec3(36.8090f,  4.5834f, 20.0f),
+        glm::vec3(-36.8090f,  4.5834f, 20.0f), glm::vec3(23.7700f,  4.5834f,-23.0f),
+        glm::vec3(0.8734f,  4.5834f,-23.0f), glm::vec3(-22.0232f,  4.5834f,-23.0f),
+        glm::vec3(36.8090f,  4.5834f,-23.0f), glm::vec3(-36.8090f,  4.5834f,-23.0f),
 
         glm::vec3(-15.2176f, 12.5810f,  8.7f), glm::vec3(-15.2176f, 12.5810f, -4.7f),
-        glm::vec3( -5.2176f, 12.5810f,  8.7f), glm::vec3( -5.2176f, 12.5810f, -4.7f),
-        glm::vec3( 18.2180f, 12.5810f,  8.7f), glm::vec3( 18.2180f, 12.5810f, -4.7f),
-        glm::vec3(  8.2180f, 12.5810f,  8.7f), glm::vec3(  8.2180f, 12.5810f, -4.7f),
-        glm::vec3( 23.7700f, 12.5810f, 20.0f), glm::vec3(  0.8734f, 12.5810f, 20.0f),
-        glm::vec3(-22.0232f, 12.5810f, 20.0f), glm::vec3( 36.8090f, 12.5810f, 20.0f),
-        glm::vec3(-36.8090f, 12.5810f, 20.0f), glm::vec3( 23.7700f, 12.5810f,-23.0f),
-        glm::vec3(  0.8734f, 12.5810f,-23.0f), glm::vec3(-22.0232f, 12.5810f,-23.0f),
-        glm::vec3( 36.8090f, 12.5810f,-23.0f), glm::vec3(-36.8090f, 12.5810f,-23.0f),
+        glm::vec3(-5.2176f, 12.5810f,  8.7f), glm::vec3(-5.2176f, 12.5810f, -4.7f),
+        glm::vec3(18.2180f, 12.5810f,  8.7f), glm::vec3(18.2180f, 12.5810f, -4.7f),
+        glm::vec3(8.2180f, 12.5810f,  8.7f), glm::vec3(8.2180f, 12.5810f, -4.7f),
+        glm::vec3(23.7700f, 12.5810f, 20.0f), glm::vec3(0.8734f, 12.5810f, 20.0f),
+        glm::vec3(-22.0232f, 12.5810f, 20.0f), glm::vec3(36.8090f, 12.5810f, 20.0f),
+        glm::vec3(-36.8090f, 12.5810f, 20.0f), glm::vec3(23.7700f, 12.5810f,-23.0f),
+        glm::vec3(0.8734f, 12.5810f,-23.0f), glm::vec3(-22.0232f, 12.5810f,-23.0f),
+        glm::vec3(36.8090f, 12.5810f,-23.0f), glm::vec3(-36.8090f, 12.5810f,-23.0f),
 
         glm::vec3(-15.2176f, 20.5786f,  8.7f), glm::vec3(-15.2176f, 20.5786f, -4.7f),
-        glm::vec3( -5.2176f, 20.5786f,  8.7f), glm::vec3( -5.2176f, 20.5786f, -4.7f),
-        glm::vec3( 18.2180f, 20.5786f,  8.7f), glm::vec3( 18.2180f, 20.5786f, -4.7f),
-        glm::vec3(  8.2180f, 20.5786f,  8.7f), glm::vec3(  8.2180f, 20.5786f, -4.7f),
-        glm::vec3( 23.7700f, 20.5786f, 20.0f), glm::vec3(  0.8734f, 20.5786f, 20.0f),
-        glm::vec3(-22.0232f, 20.5786f, 20.0f), glm::vec3( 36.8090f, 20.5786f, 20.0f),
-        glm::vec3(-36.8090f, 20.5786f, 20.0f), glm::vec3( 23.7700f, 20.5786f,-23.0f),
-        glm::vec3(  0.8734f, 20.5786f,-23.0f), glm::vec3(-22.0232f, 20.5786f,-23.0f),
-        glm::vec3( 36.8090f, 20.5786f,-23.0f), glm::vec3(-36.8090f, 20.5786f,-23.0f)
+        glm::vec3(-5.2176f, 20.5786f,  8.7f), glm::vec3(-5.2176f, 20.5786f, -4.7f),
+        glm::vec3(18.2180f, 20.5786f,  8.7f), glm::vec3(18.2180f, 20.5786f, -4.7f),
+        glm::vec3(8.2180f, 20.5786f,  8.7f), glm::vec3(8.2180f, 20.5786f, -4.7f),
+        glm::vec3(23.7700f, 20.5786f, 20.0f), glm::vec3(0.8734f, 20.5786f, 20.0f),
+        glm::vec3(-22.0232f, 20.5786f, 20.0f), glm::vec3(36.8090f, 20.5786f, 20.0f),
+        glm::vec3(-36.8090f, 20.5786f, 20.0f), glm::vec3(23.7700f, 20.5786f,-23.0f),
+        glm::vec3(0.8734f, 20.5786f,-23.0f), glm::vec3(-22.0232f, 20.5786f,-23.0f),
+        glm::vec3(36.8090f, 20.5786f,-23.0f), glm::vec3(-36.8090f, 20.5786f,-23.0f)
     };
 
     const std::array<glm::vec3, 2> lightOffsets = {
         glm::vec3(-1.7f, -2.0f, 0.0f),
-        glm::vec3( 1.7f, -2.0f, 0.0f)
+        glm::vec3(1.7f, -2.0f, 0.0f)
     };
 
+    for (const glm::vec3& lampPosition : lampPositions)
+    {
+        for (const glm::vec3& offset : lightOffsets)
+        {
+            allLampLightPositions.push_back(lampPosition + offset);
+        }
+    }
 
     exportParkingStateJson();
     updateWindowTitle(window);
@@ -547,7 +675,23 @@ int main()
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
-        processInput(window);
+        processInput(window, vehicle);
+
+        vehicle.processInput(window, deltaTime);
+        processGamepadInput(vehicle);
+
+        const glm::vec3 previousVehiclePosition = vehicle.getPosition();
+        vehicle.update(deltaTime);
+
+        // Colisión conservadora con los obstáculos estáticos del escenario.
+        if (collidesWithStaticObstacle(
+            vehicle.getPosition(),
+            VEHICLE_COLLISION_HALF_SIZE))
+        {
+            vehicle.setPosition(previousVehiclePosition);
+        }
+
+        updateThirdPersonCameraReturn(deltaTime);
         processExternalCommands();
 
         const float targetDayFactor = dayMode ? 1.0f : 0.0f;
@@ -579,24 +723,35 @@ int main()
             0.1f,
             5000.0f
         );
-        const glm::mat4 view = camera.GetViewMatrix();
+        const glm::mat4 view = getVehicleCameraView(vehicle);
 
-        // Cielo original del proyecto: se conserva el mismo modelo,
-        // textura y shaders de ParkingPoryecto.rar.
+        // Cielo original del repositorio: usa night_sky.vs, night_sky.fs
+        // y el modelo model/night_sky/night_sky.obj.
         glDepthFunc(GL_LEQUAL);
         glDepthMask(GL_FALSE);
         glDisable(GL_CULL_FACE);
 
         nightSkyShader.use();
-        const glm::mat4 skyView = glm::mat4(glm::mat3(camera.GetViewMatrix()));
+
+        const glm::mat4 skyView = glm::mat4(glm::mat3(view));
         nightSkyShader.setMat4("projection", projection);
         nightSkyShader.setMat4("view", skyView);
         nightSkyShader.setFloat("dayFactor", dayFactor);
 
-        glm::mat4 nightSky(1.0f);
-        nightSky = glm::scale(nightSky, glm::vec3(20.0f));
-        nightSkyShader.setMat4("model", nightSky);
-        nightSkyModel.Draw(nightSkyShader);
+        glm::mat4 nightSkyMatrix(1.0f);
+        nightSkyMatrix = glm::scale(
+            nightSkyMatrix,
+            glm::vec3(20.0f)
+        );
+
+        nightSkyShader.setMat4(
+            "model",
+            nightSkyMatrix
+        );
+
+        nightSkyModel.Draw(
+            nightSkyShader
+        );
 
         glDepthMask(GL_TRUE);
         glDepthFunc(GL_LESS);
@@ -609,8 +764,8 @@ int main()
         floorShader.setVec3(
             "floorColor",
             glm::mix(
-                glm::vec3(0.040f, 0.045f, 0.050f),
-                glm::vec3(0.180f, 0.190f, 0.200f),
+                glm::vec3(0.035f, 0.040f, 0.047f),
+                glm::vec3(0.17f, 0.18f, 0.19f),
                 dayFactor
             )
         );
@@ -622,37 +777,56 @@ int main()
         glDrawArrays(GL_TRIANGLES, 0, 6);
         glBindVertexArray(0);
 
-        // Shader y luces originales del escenario.
+        // Shader de modelos. Solo se envian las 24 luces mas cercanas a la camara.
         modelShader.use();
         modelShader.setMat4("projection", projection);
         modelShader.setMat4("view", view);
-        modelShader.setVec3("viewPos", camera.Position);
+        const glm::vec3 activeCameraPosition = getActiveCameraPosition(vehicle);
+        modelShader.setVec3("viewPos", activeCameraPosition);
         modelShader.setFloat("dayFactor", dayFactor);
 
-        int lightIndex = 0;
-        for (const glm::vec3& lampPosition : lampPositions)
+        std::vector<std::pair<float, glm::vec3>> nearestLights;
+        nearestLights.reserve(allLampLightPositions.size());
+        for (const glm::vec3& position : allLampLightPositions)
         {
-            for (const glm::vec3& offset : lightOffsets)
+            const glm::vec3 difference = position - activeCameraPosition;
+            nearestLights.emplace_back(glm::dot(difference, difference), position);
+        }
+        std::partial_sort(
+            nearestLights.begin(),
+            nearestLights.begin() + std::min<std::size_t>(MAX_RENDERED_POINT_LIGHTS, nearestLights.size()),
+            nearestLights.end(),
+            [](const auto& left, const auto& right)
             {
-                const glm::vec3 currentLightPosition = lampPosition + offset;
-                const std::string base =
-                    "pointLights[" + std::to_string(lightIndex) + "]";
-
-                modelShader.setVec3(base + ".position", currentLightPosition);
-                modelShader.setVec3(base + ".ambient", glm::vec3(0.01f, 0.01f, 0.015f));
-                modelShader.setVec3(base + ".diffuse", glm::vec3(1.0f, 0.85f, 0.55f));
-                modelShader.setVec3(base + ".specular", glm::vec3(1.0f, 0.90f, 0.65f));
-                modelShader.setFloat(base + ".constant", 1.0f);
-                modelShader.setFloat(base + ".linear", 0.14f);
-                modelShader.setFloat(base + ".quadratic", 0.07f);
-                ++lightIndex;
+                return left.first < right.first;
             }
+        );
+
+        const int activeLightCount = static_cast<int>(
+            std::min<std::size_t>(MAX_RENDERED_POINT_LIGHTS, nearestLights.size())
+            );
+        modelShader.setInt("activePointLights", activeLightCount);
+
+        for (int i = 0; i < activeLightCount; ++i)
+        {
+            const std::string base = "pointLights[" + std::to_string(i) + "]";
+            modelShader.setVec3(base + ".position", nearestLights[i].second);
+            modelShader.setVec3(base + ".ambient", glm::vec3(0.012f, 0.012f, 0.018f));
+            modelShader.setVec3(base + ".diffuse", glm::vec3(1.0f, 0.85f, 0.55f));
+            modelShader.setVec3(base + ".specular", glm::vec3(1.0f, 0.90f, 0.65f));
+            modelShader.setFloat(base + ".constant", 1.0f);
+            modelShader.setFloat(base + ".linear", 0.14f);
+            modelShader.setFloat(base + ".quadratic", 0.07f);
         }
 
         glm::mat4 modelMatrix(1.0f);
         modelShader.setMat4("model", modelMatrix);
         parkingModel.Draw(modelShader);
 
+        modelMatrix = glm::mat4(1.0f);
+        modelMatrix = glm::translate(modelMatrix, glm::vec3(0.0f, 0.0f, 67.9f));
+        modelShader.setMat4("model", modelMatrix);
+        streetModel.Draw(modelShader);
 
         for (const glm::vec3& lampPosition : lampPositions)
         {
@@ -662,15 +836,56 @@ int main()
             lightModel.Draw(modelShader);
         }
 
+        // Carros ocupando espacios.
+        for (const ParkingSlot& slot : parkingSlots)
+        {
+            if (slot.state != SlotState::Occupied)
+                continue;
 
-        // No se dibuja ningun vehiculo. Los estados se muestran con luces.
+            const int carType = std::clamp(slot.carType, 0, static_cast<int>(carPresets.size()) - 1);
+            if (carModelLoaded[carType] && carModels[carType])
+            {
+                const CarPreset& preset = carPresets[carType];
+                glm::mat4 carMatrix(1.0f);
+                carMatrix = glm::translate(carMatrix, slot.position + preset.positionOffset);
+                carMatrix = glm::rotate(
+                    carMatrix,
+                    glm::radians(slot.rotationYDegrees + preset.rotationOffsetDegrees),
+                    glm::vec3(0.0f, 1.0f, 0.0f)
+                );
+                carMatrix = glm::scale(carMatrix, glm::vec3(preset.scale));
+                modelShader.setMat4("model", carMatrix);
+                carModels[carType]->Draw(modelShader);
+            }
+        }
+
+        // Vehículo controlable: usa el mismo shader de modelos y las mismas luces.
+        modelShader.use();
+        modelShader.setMat4("projection", projection);
+        modelShader.setMat4("view", view);
+        modelShader.setVec3("viewPos", activeCameraPosition);
+        modelShader.setFloat("dayFactor", dayFactor);
+        glDisable(GL_CULL_FACE);
+        vehicle.draw(modelShader);
+        glEnable(GL_CULL_FACE);
+
         primitiveShader.use();
         primitiveShader.setMat4("projection", projection);
         primitiveShader.setMat4("view", view);
 
+        for (const ParkingSlot& slot : parkingSlots)
+        {
+            if (slot.state == SlotState::Occupied)
+            {
+                const int carType = std::clamp(slot.carType, 0, static_cast<int>(carPresets.size()) - 1);
+                if (!carModelLoaded[carType])
+                    drawFallbackCar(primitiveShader, cubeVAO, slot);
+            }
+        }
 
-        // Solo se agregan los elementos solicitados: luces de estado y ruta.
-
+        drawRampSafetyWalls(primitiveShader, cubeVAO);
+        drawRestrictedCorridorBarriers(primitiveShader, cubeVAO, currentFrame);
+        drawTrafficArrows(primitiveShader, cubeVAO);
         drawParkingIndicators(primitiveShader, cubeVAO, currentFrame);
         drawGuidanceRoute(primitiveShader, routeVAO, routeVBO, cubeVAO, currentFrame);
 
@@ -702,7 +917,7 @@ bool pressedOnce(GLFWwindow* window, int key)
     return pressed;
 }
 
-void processInput(GLFWwindow* window)
+void processInput(GLFWwindow* window, Vehicle& vehicle)
 {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
@@ -710,7 +925,7 @@ void processInput(GLFWwindow* window)
     if (pressedOnce(window, GLFW_KEY_N))
     {
         dayMode = !dayMode;
-        showNotice(dayMode ? "MODO DIA" : "MODO NOCHE", "CIELO ORIGINAL CONSERVADO", 2.0f);
+        showNotice(dayMode ? "MODO DIA" : "MODO NOCHE", "CIELO ORIGINAL DEL REPOSITORIO", 2.0f);
         updateWindowTitle(window);
     }
 
@@ -721,8 +936,29 @@ void processInput(GLFWwindow* window)
         updateWindowTitle(window);
     }
 
+    if (pressedOnce(window, GLFW_KEY_C))
+    {
+        spawnCarInNextAvailableSlot();
+        updateWindowTitle(window);
+    }
 
-    if (pressedOnce(window, GLFW_KEY_R))
+    if (pressedOnce(window, GLFW_KEY_X))
+    {
+        removeLastSpawnedCar();
+        updateWindowTitle(window);
+    }
+
+    if (pressedOnce(window, GLFW_KEY_V))
+    {
+        selectedCarType = (selectedCarType + 1) % static_cast<int>(carPresets.size());
+        showNotice(
+            "TIPO DE CARRO " + std::to_string(selectedCarType + 1),
+            carModelLoaded[selectedCarType] ? "MODELO OBJ CARGADO" : "USANDO RESPALDO PROCEDURAL",
+            2.5f
+        );
+    }
+
+    if (pressedOnce(window, GLFW_KEY_Q))
     {
         reserveBestAvailableSlot();
         updateWindowTitle(window);
@@ -768,15 +1004,83 @@ void processInput(GLFWwindow* window)
     if (pressedOnce(window, GLFW_KEY_T))
         phoneVisible = !phoneVisible;
 
-    // La camara usa las cajas de colision de la infraestructura.
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-        moveCameraSafely(FORWARD);
-    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-        moveCameraSafely(BACKWARD);
-    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-        moveCameraSafely(LEFT);
-    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-        moveCameraSafely(RIGHT);
+    // =====================================================
+    // CÁMARA LIBRE: flechas. WASD queda reservado al vehículo.
+    // =====================================================
+    if (cameraMode == CameraMode::FREE)
+    {
+        if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS)
+            moveCameraSafely(FORWARD);
+        if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS)
+            moveCameraSafely(BACKWARD);
+        if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS)
+            moveCameraSafely(LEFT);
+        if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS)
+            moveCameraSafely(RIGHT);
+    }
+
+    // Cambio de cámara con 1, 2 y 3.
+    const bool key1 = glfwGetKey(window, GLFW_KEY_1) == GLFW_PRESS;
+    const bool key2 = glfwGetKey(window, GLFW_KEY_2) == GLFW_PRESS;
+    const bool key3 = glfwGetKey(window, GLFW_KEY_3) == GLFW_PRESS;
+
+    if (key1 && !key1Pressed)
+    {
+        cameraMode = CameraMode::FREE;
+        resetThirdPersonCameraOffset();
+
+        const glm::vec3 vehiclePosition = vehicle.getPosition();
+        const glm::vec3 forward = vehicle.getForwardVector();
+        camera.Position =
+            vehiclePosition - forward * 8.0f + glm::vec3(0.0f, 4.0f, 0.0f);
+
+        firstMouse = true;
+        std::cout << "Camara libre activada.\n";
+    }
+
+    if (key2 && !key2Pressed)
+    {
+        cameraMode = CameraMode::THIRD_PERSON;
+        resetThirdPersonCameraOffset();
+        std::cout << "Camara tercera persona activada.\n";
+    }
+
+    if (key3 && !key3Pressed)
+    {
+        cameraMode = CameraMode::DRIVER;
+        resetThirdPersonCameraOffset();
+        std::cout << "Camara conductor activada.\n";
+    }
+
+    key1Pressed = key1;
+    key2Pressed = key2;
+    key3Pressed = key3;
+
+    const bool pPressed = glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS;
+    if (pPressed && !cameraPositionKeyPressed)
+    {
+        const glm::vec3 activePosition = getActiveCameraPosition(vehicle);
+        std::cout
+            << "\n========== CAMERA POSITION ==========\n"
+            << "X: " << activePosition.x << "\n"
+            << "Y: " << activePosition.y << "\n"
+            << "Z: " << activePosition.z << "\n"
+            << "=====================================\n";
+    }
+    cameraPositionKeyPressed = pPressed;
+
+    const bool oPressed = glfwGetKey(window, GLFW_KEY_O) == GLFW_PRESS;
+    if (oPressed && !vehiclePositionKeyPressed)
+    {
+        const glm::vec3 position = vehicle.getPosition();
+        std::cout
+            << "\n========== VEHICLE POSITION =========\n"
+            << "X: " << position.x << "\n"
+            << "Y: " << position.y << "\n"
+            << "Z: " << position.z << "\n"
+            << "=====================================\n";
+    }
+    vehiclePositionKeyPressed = oPressed;
 }
 
 
@@ -804,36 +1108,37 @@ std::vector<ParkingSlot> createParkingSlots()
     slots.reserve(169);
 
     auto addSlot = [&](int floor, char row, int number, float x)
-    {
-        std::ostringstream id;
-        id << floorIds[floor] << '-' << row
-           << std::setw(2) << std::setfill('0') << number;
+        {
+            std::ostringstream id;
+            id << floorIds[floor] << '-' << row
+                << std::setw(2) << std::setfill('0') << number;
 
-        const SlotState initialState =
-            (row == 'A' && number <= 2)
-            ? SlotState::Disabled
-            : SlotState::Available;
+            const SlotState initialState =
+                (row == 'A' && number <= 2)
+                ? SlotState::Disabled
+                : SlotState::Available;
 
-        const float z = row == 'A' ? northRowZ : southRowZ;
-        const float rotation = row == 'A' ? 0.0f : 180.0f;
-        slots.push_back({
-            id.str(),
-            floorIds[floor],
-            floor,
-            row,
-            number,
-            glm::vec3(x, floorSurfaceY[floor] + 0.28f, z),
-            rotation,
-            initialState,
-            -1
-        });
-    };
+            const float z = row == 'A' ? northRowZ : southRowZ;
+            const float rotation = row == 'A' ? 0.0f : 180.0f;
+            slots.push_back({
+                id.str(),
+                floorIds[floor],
+                floor,
+                row,
+                number,
+                glm::vec3(x, floorSurfaceY[floor] + 0.28f, z),
+                rotation,
+                initialState,
+                -1,
+                0
+                });
+        };
 
     for (int floor = 0; floor < 4; ++floor)
     {
         // En PB la entrada ocupa PB-A12 hasta PB-A18. El OBJ no contiene
         // lineas de estacionamiento en ese sector, por eso nunca se generan
-        // espacios dentro del acceso principal.
+        // carros dentro del acceso principal.
         for (int number = 1; number <= 22; ++number)
         {
             const bool entranceGap = floor == 0 && number >= 12 && number <= 18;
@@ -872,32 +1177,32 @@ ParkingGraph createParkingGraph(std::vector<ParkingSlot>& slots)
     ParkingGraph graph;
 
     auto addNode = [&graph](const glm::vec3& position)
-    {
-        const int index = static_cast<int>(graph.nodes.size());
-        graph.nodes.push_back(position);
-        graph.adjacency.emplace_back();
-        return index;
-    };
+        {
+            const int index = static_cast<int>(graph.nodes.size());
+            graph.nodes.push_back(position);
+            graph.adjacency.emplace_back();
+            return index;
+        };
 
     auto nearestColumnForX = [&xCenters](float x)
-    {
-        int nearest = 0;
-        float nearestDistance = std::numeric_limits<float>::infinity();
-        for (int column = 0; column < 22; ++column)
         {
-            const float distance = std::abs(xCenters[column] - x);
-            if (distance < nearestDistance)
+            int nearest = 0;
+            float nearestDistance = std::numeric_limits<float>::infinity();
+            for (int column = 0; column < 22; ++column)
             {
-                nearestDistance = distance;
-                nearest = column;
+                const float distance = std::abs(xCenters[column] - x);
+                if (distance < nearestDistance)
+                {
+                    nearestDistance = distance;
+                    nearest = column;
+                }
             }
-        }
-        return nearest;
-    };
+            return nearest;
+        };
 
     // Acceso frontal. La conexion atraviesa el hueco real sin parqueaderos.
     graph.entranceNode = addNode(glm::vec3(12.0f, floorSurfaceY[0] + 0.42f, 47.0f));
-    graph.exitNode = addNode(glm::vec3(12.45f, floorSurfaceY[0] + 0.42f, 47.0f));
+    graph.exitNode = addNode(glm::vec3(28.0f, floorSurfaceY[0] + 0.42f, 47.0f));
 
     std::array<std::array<int, 22>, 4> northLane{};
     std::array<std::array<int, 22>, 4> southLane{};
@@ -974,7 +1279,7 @@ ParkingGraph createParkingGraph(std::vector<ParkingSlot>& slots)
     }
 
     addUndirectedEdge(graph, graph.entranceNode, northLane[0][nearestColumnForX(12.0f)]);
-    addUndirectedEdge(graph, graph.exitNode, northLane[0][nearestColumnForX(12.45f)]);
+    addUndirectedEdge(graph, graph.exitNode, northLane[0][nearestColumnForX(28.0f)]);
 
     // La geometria izquierda sube desde Z positivo hacia Z negativo.
     // La geometria derecha baja desde Z positivo hacia Z negativo.
@@ -1006,43 +1311,33 @@ std::vector<CollisionBox> createStaticCollisionBoxes()
 {
     std::vector<CollisionBox> boxes;
 
-    auto addPillar = [&](float x, float y, float z, float height, const std::string& name)
-    {
-        // El OBJ usa pilares de aproximadamente 2 x 2 unidades. Se agrega
-        // un pequeno margen para que la camara no pueda atravesar sus caras,
-        // especialmente en los pisos superiores.
-        boxes.push_back({
-            glm::vec3(x, y, z),
-            glm::vec3(1.10f, height * 0.5f, 1.10f),
-            name
-        });
+    auto addBox = [&](const glm::vec3& center, const glm::vec3& fullSize, const std::string& name)
+        {
+            boxes.push_back({ center, fullSize * 0.5f, name });
+        };
+
+    // Tres muros originales del OBJ. Los espacios ENTRE estos muros siguen libres.
+    addBox(glm::vec3(-22.4734f, 9.0770f, 1.3645f), glm::vec3(0.50f, 24.20f, 20.90f), "MURO_CENTRAL_IZQUIERDO");
+    addBox(glm::vec3(0.7847f, 9.0770f, 1.3645f), glm::vec3(0.50f, 24.20f, 20.90f), "MURO_CENTRAL_MEDIO");
+    addBox(glm::vec3(24.1110f, 9.0770f, 1.3645f), glm::vec3(0.50f, 24.20f, 20.90f), "MURO_CENTRAL_DERECHO");
+
+    const std::array<float, 4> floorSurfaceY = {
+        -2.7509f, 5.2563f, 13.2589f, 21.2597f
     };
 
-    // Posiciones y alturas obtenidas directamente de Pillars_0 en parking.obj.
-    addPillar(-44.0381f, 11.6681f, -32.5211f, 33.7317f, "PILAR_01");
-    addPillar(-44.0381f,  9.3239f,  -9.6180f, 29.0433f, "PILAR_02");
-    addPillar(-44.0381f,  9.3240f,  12.5664f, 29.0433f, "PILAR_03");
-    addPillar(-44.0381f, 11.8276f,  31.9347f, 34.0506f, "PILAR_04");
+    for (int floor = 0; floor < 4; ++floor)
+    {
+        const float baseY = floorSurfaceY[floor];
 
-    addPillar(-22.4734f,  9.3239f, -32.5211f, 29.0433f, "PILAR_05");
-    addPillar(-22.4734f, 14.4509f,  -9.6180f, 39.2972f, "PILAR_06");
-    addPillar(-22.4734f, 14.4509f,  12.5664f, 39.2972f, "PILAR_07");
-    addPillar(-22.4734f,  9.3240f,  31.9347f, 29.0433f, "PILAR_08");
+        // Separadores colocados en el borde interior real de cada rampa.
+        addBox(glm::vec3(-30.72f, baseY + 1.65f, 0.0f), glm::vec3(0.70f, 3.30f, 25.0f), "MURO_RAMPA_IZQUIERDA");
+        addBox(glm::vec3(30.72f, baseY + 1.65f, 0.0f), glm::vec3(0.70f, 3.30f, 25.0f), "MURO_RAMPA_DERECHA");
 
-    addPillar(  0.8495f,  9.3239f, -32.5211f, 29.0433f, "PILAR_09");
-    addPillar(  0.8495f, 14.4509f,  -9.6180f, 39.2972f, "PILAR_10");
-    addPillar(  0.8495f, 14.4509f,  12.5664f, 39.2972f, "PILAR_11");
-    addPillar(  0.8495f,  9.3240f,  31.9347f, 29.0433f, "PILAR_12");
-
-    addPillar( 24.0039f,  9.3239f, -32.5211f, 29.0433f, "PILAR_13");
-    addPillar( 24.0039f, 14.4509f,  -9.6180f, 39.2972f, "PILAR_14");
-    addPillar( 24.0039f, 14.4509f,  12.5664f, 39.2972f, "PILAR_15");
-    addPillar( 24.0039f,  9.3240f,  31.9347f, 29.0433f, "PILAR_16");
-
-    addPillar( 44.0580f, 11.6681f, -32.5211f, 33.7317f, "PILAR_17");
-    addPillar( 44.0580f,  9.3239f,  -9.6180f, 29.0433f, "PILAR_18");
-    addPillar( 44.0580f,  9.3240f,  12.5664f, 29.0433f, "PILAR_19");
-    addPillar( 44.0580f, 11.8276f,  31.9347f, 34.0506f, "PILAR_20");
+        // Barreras en los corredores exteriores: rampa-muro. No se bloquean
+        // los dos pasillos centrales situados entre muro y muro.
+        addBox(glm::vec3(-26.92f, baseY + 1.35f, 0.0f), glm::vec3(7.10f, 2.70f, 1.20f), "BARRERA_EXTERIOR_IZQUIERDA");
+        addBox(glm::vec3(27.72f, baseY + 1.35f, 0.0f), glm::vec3(6.30f, 2.70f, 1.20f), "BARRERA_EXTERIOR_DERECHA");
+    }
 
     return boxes;
 }
@@ -1100,15 +1395,15 @@ void moveCameraSafely(Camera_Movement direction)
     const glm::vec3 start = camera.Position;
     camera.ProcessKeyboard(direction, deltaTime);
 
-    // Primera etapa: cajas logicas para barreras, postes y limites.
+    // Primera etapa: cajas logicas para barreras y limites agregados.
     const glm::vec3 desired = resolveCollisionMovement(
         start,
         camera.Position,
         CAMERA_COLLISION_HALF_SIZE
     );
 
-    // Segunda etapa: triangulos reales del modelo para paredes, columnas,
-    // pisos, rampas y barandas. Esto evita atravesar huecos falsos de AABB.
+    // Segunda etapa: triangulos reales del modelo para paredes,
+    // columnas, pisos, rampas y barandas.
     camera.Position = parkingCollision.moveCamera(start, desired);
 }
 
@@ -1281,7 +1576,7 @@ void reserveBestAvailableSlot()
 {
     cancelCurrentReservation();
 
-    const int startNode = findNearestGraphNode(camera.Position);
+    const int startNode = findNearestGraphNode(getSimulationPosition());
     if (startNode < 0)
         return;
 
@@ -1379,7 +1674,7 @@ void reserveSpecificSlot(const std::string& slotId)
 
     cancelCurrentReservation();
 
-    const int startNode = findNearestGraphNode(camera.Position);
+    const int startNode = findNearestGraphNode(getSimulationPosition());
     if (startNode < 0)
         return;
 
@@ -1421,7 +1716,7 @@ void routeToExit()
 {
     cancelCurrentReservation();
 
-    const int startNode = findNearestGraphNode(camera.Position);
+    const int startNode = findNearestGraphNode(getSimulationPosition());
     if (startNode < 0 || parkingGraph.exitNode < 0)
         return;
 
@@ -1489,6 +1784,10 @@ void simulateRandomOccupancy()
     occupiedHistory.clear();
 
     std::uniform_int_distribution<int> occupiedPerFloor(18, 32);
+    std::uniform_int_distribution<int> carTypeDistribution(
+        0,
+        static_cast<int>(carPresets.size()) - 1
+    );
 
     int totalOccupied = 0;
 
@@ -1515,6 +1814,7 @@ void simulateRandomOccupancy()
         {
             ParkingSlot& slot = parkingSlots[candidates[i]];
             slot.state = SlotState::Occupied;
+            slot.carType = carTypeDistribution(randomEngine);
             occupiedHistory.push_back(candidates[i]);
             ++totalOccupied;
         }
@@ -1531,10 +1831,62 @@ void simulateRandomOccupancy()
 
     showNotice(
         "SIMULACION ACTUALIZADA",
-        std::to_string(totalOccupied) + " ESPACIOS MARCADOS COMO OCUPADOS",
+        std::to_string(totalOccupied) + " CARROS EN POSICIONES ALEATORIAS",
         4.0f
     );
     exportParkingStateJson();
+}
+
+void spawnCarInNextAvailableSlot()
+{
+    if (parkingSlots.empty())
+        return;
+
+    for (std::size_t offset = 0; offset < parkingSlots.size(); ++offset)
+    {
+        const int index = (nextSpawnSearchIndex + static_cast<int>(offset)) % static_cast<int>(parkingSlots.size());
+        if (parkingSlots[index].state == SlotState::Available)
+        {
+            parkingSlots[index].state = SlotState::Occupied;
+            parkingSlots[index].carType = selectedCarType;
+            occupiedHistory.push_back(index);
+            nextSpawnSearchIndex = (index + 1) % static_cast<int>(parkingSlots.size());
+
+            showNotice(
+                "CARRO AGREGADO EN " + parkingSlots[index].id,
+                "EL FOCO CAMBIO DE VERDE A ROJO",
+                2.8f
+            );
+            exportParkingStateJson();
+            return;
+        }
+    }
+
+    showNotice("SIN ESPACIOS LIBRES", "NO SE PUEDE AGREGAR OTRO CARRO", 3.5f);
+}
+
+void removeLastSpawnedCar()
+{
+    while (!occupiedHistory.empty())
+    {
+        const int index = occupiedHistory.back();
+        occupiedHistory.pop_back();
+
+        if (index >= 0 && index < static_cast<int>(parkingSlots.size()) &&
+            parkingSlots[index].state == SlotState::Occupied)
+        {
+            parkingSlots[index].state = SlotState::Available;
+            showNotice(
+                "CARRO RETIRADO DE " + parkingSlots[index].id,
+                "EL FOCO CAMBIO DE ROJO A VERDE",
+                2.8f
+            );
+            exportParkingStateJson();
+            return;
+        }
+    }
+
+    showNotice("NINGUN CARRO AGREGADO", "USA G PARA GENERAR UNA SIMULACION", 2.5f);
 }
 
 void completeReservedParking()
@@ -1547,6 +1899,7 @@ void completeReservedParking()
 
     ParkingSlot& slot = parkingSlots[reservedSlotIndex];
     slot.state = SlotState::Occupied;
+    slot.carType = selectedCarType;
     occupiedHistory.push_back(reservedSlotIndex);
 
     const std::string completedId = slot.id;
@@ -1573,7 +1926,7 @@ void updateAutomaticArrival()
         const glm::vec3 targetPosition =
             parkingSlots[reservedSlotIndex].position + glm::vec3(0.0f, 1.2f, 0.0f);
 
-        if (glm::length(camera.Position - targetPosition) <= 5.5f)
+        if (glm::length(getSimulationPosition() - targetPosition) <= 5.5f)
             completeReservedParking();
         return;
     }
@@ -1581,7 +1934,7 @@ void updateAutomaticArrival()
     if (guidanceTarget == GuidanceTarget::Exit && parkingGraph.exitNode >= 0)
     {
         const glm::vec3 exitPosition = parkingGraph.nodes[parkingGraph.exitNode];
-        if (glm::length(camera.Position - exitPosition) <= 7.0f)
+        if (glm::length(getSimulationPosition() - exitPosition) <= 7.0f)
         {
             activeRoute.clear();
             guidanceTarget = GuidanceTarget::None;
@@ -1683,9 +2036,10 @@ void processExternalCommands()
                 cancelCurrentReservation();
 
             parkingSlots[slotIndex].state = SlotState::Occupied;
+            parkingSlots[slotIndex].carType = selectedCarType;
             occupiedHistory.push_back(slotIndex);
             selectedPhoneFloor = parkingSlots[slotIndex].floorIndex;
-            showNotice("ESPACIO OCUPADO: " + slotId, "COMANDO RECIBIDO DESDE LA APP", 2.8f);
+            showNotice("CARRO EN " + slotId, "COMANDO RECIBIDO DESDE LA APP", 2.8f);
         }
         else
         {
@@ -1789,14 +2143,14 @@ void exportParkingStateJson()
         output << "{\n";
         output << "  \"version\": 4,\n";
         output << "  \"simulation_time_seconds\": "
-               << std::fixed << std::setprecision(2) << glfwGetTime() << ",\n";
+            << std::fixed << std::setprecision(2) << glfwGetTime() << ",\n";
         output << "  \"total_slots\": " << parkingSlots.size() << ",\n";
         output << "  \"available\": " << available << ",\n";
         output << "  \"occupied\": " << occupied << ",\n";
         output << "  \"reserved\": " << reserved << ",\n";
         output << "  \"disabled\": " << disabled << ",\n";
         output << "  \"guidance_active\": "
-               << (!activeRoute.empty() ? "true" : "false") << ",\n";
+            << (!activeRoute.empty() ? "true" : "false") << ",\n";
         output << "  \"reserved_slot_id\": \"" << reservedId << "\",\n";
 
         const std::string guidanceType =
@@ -1822,7 +2176,7 @@ void exportParkingStateJson()
                 << "\"id\":\"" << floorIds[floor] << "\","
                 << "\"name\":\"" << floorNames[floor] << "\","
                 << "\"level\":" << floor << ','
-                << "\"total\":" << floorTotal[floor] << ',' 
+                << "\"total\":" << floorTotal[floor] << ','
                 << "\"available\":" << floorAvailable[floor] << ','
                 << "\"occupied\":" << floorOccupied[floor] << ','
                 << "\"reserved\":" << floorReserved[floor] << ','
@@ -1904,6 +2258,59 @@ void showNotice(
     std::cout << title << " - " << subtitle << '\n';
 }
 
+void drawFallbackCar(Shader& primitiveShader, unsigned int cubeVAO, const ParkingSlot& slot)
+{
+    const int carType = std::clamp(slot.carType, 0, static_cast<int>(carPresets.size()) - 1);
+    const glm::vec4 bodyColor = carPresets[carType].fallbackColor;
+
+    const float rotation = slot.rotationYDegrees;
+    drawCube(
+        primitiveShader,
+        cubeVAO,
+        slot.position + glm::vec3(0.0f, 0.72f, 0.0f),
+        glm::vec3(2.30f, 0.68f, 4.20f),
+        rotation,
+        bodyColor
+    );
+    drawCube(
+        primitiveShader,
+        cubeVAO,
+        slot.position + glm::vec3(0.0f, 1.55f, -0.25f),
+        glm::vec3(1.75f, 0.72f, 2.15f),
+        rotation,
+        glm::vec4(bodyColor.r * 0.82f, bodyColor.g * 0.82f, bodyColor.b * 0.82f, 1.0f)
+    );
+
+    const glm::vec4 wheelColor(0.025f, 0.025f, 0.03f, 1.0f);
+    const std::array<glm::vec3, 4> wheelOffsets = {
+        glm::vec3(-1.18f, 0.18f,  1.35f),
+        glm::vec3(1.18f, 0.18f,  1.35f),
+        glm::vec3(-1.18f, 0.18f, -1.35f),
+        glm::vec3(1.18f, 0.18f, -1.35f)
+    };
+
+    const float radians = glm::radians(rotation);
+    const float cosine = std::cos(radians);
+    const float sine = std::sin(radians);
+
+    for (const glm::vec3& localOffset : wheelOffsets)
+    {
+        const glm::vec3 rotatedOffset(
+            localOffset.x * cosine + localOffset.z * sine,
+            localOffset.y,
+            -localOffset.x * sine + localOffset.z * cosine
+        );
+        drawCube(
+            primitiveShader,
+            cubeVAO,
+            slot.position + rotatedOffset,
+            glm::vec3(0.35f, 0.42f, 0.68f),
+            rotation,
+            wheelColor
+        );
+    }
+}
+
 void drawParkingIndicators(Shader& primitiveShader, unsigned int cubeVAO, float currentTime)
 {
     for (const ParkingSlot& slot : parkingSlots)
@@ -1930,6 +2337,245 @@ void drawParkingIndicators(Shader& primitiveShader, unsigned int cubeVAO, float 
         );
     }
 }
+void drawRampSafetyWalls(Shader& primitiveShader, unsigned int cubeVAO)
+{
+    const std::array<float, 4> floorSurfaceY = {
+        -2.7509f, 5.2563f, 13.2589f, 21.2597f
+    };
+
+    const glm::vec4 concreteColor(0.20f, 0.22f, 0.25f, 1.0f);
+    const glm::vec4 warningColor(0.95f, 0.72f, 0.08f, 1.0f);
+
+    for (int floor = 0; floor < 4; ++floor)
+    {
+        const float baseY = floorSurfaceY[floor];
+
+        // Borde interior real de las rampas. Los extremos quedan abiertos
+        // para entrar o salir por Z +/-20, pero el muro central es solido.
+        for (float x : { -30.72f, 30.72f })
+        {
+            drawCube(
+                primitiveShader,
+                cubeVAO,
+                glm::vec3(x, baseY + 1.65f, 0.0f),
+                glm::vec3(0.70f, 3.30f, 25.0f),
+                0.0f,
+                concreteColor
+            );
+
+            for (float z = -9.0f; z <= 9.0f; z += 6.0f)
+            {
+                const float faceOffset = x < 0.0f ? 0.38f : -0.38f;
+                drawCube(
+                    primitiveShader,
+                    cubeVAO,
+                    glm::vec3(x + faceOffset, baseY + 1.65f, z),
+                    glm::vec3(0.08f, 0.62f, 2.2f),
+                    0.0f,
+                    warningColor
+                );
+            }
+        }
+    }
+}
+
+
+void drawRestrictedCorridorBarriers(
+    Shader& primitiveShader,
+    unsigned int cubeVAO,
+    float currentTime
+)
+{
+    const std::array<float, 4> floorSurfaceY = {
+        -2.7509f, 5.2563f, 13.2589f, 21.2597f
+    };
+
+    const bool redPhase = std::fmod(currentTime, 1.2f) < 0.6f;
+    const glm::vec4 activeColor = redPhase
+        ? glm::vec4(1.0f, 0.08f, 0.04f, 1.0f)
+        : glm::vec4(1.0f, 0.72f, 0.03f, 1.0f);
+    const glm::vec4 inactiveColor = redPhase
+        ? glm::vec4(1.0f, 0.72f, 0.03f, 1.0f)
+        : glm::vec4(1.0f, 0.08f, 0.04f, 1.0f);
+    const glm::vec4 darkMetal(0.05f, 0.06f, 0.08f, 1.0f);
+
+    struct BarrierLayout
+    {
+        float centerX;
+        float width;
+    };
+
+    // Solo se cierran los corredores rampa-muro. Los dos corredores entre
+    // los tres muros centrales permanecen completamente transitables.
+    const std::array<BarrierLayout, 2> layouts = {
+        BarrierLayout{ -26.92f, 7.10f },
+        BarrierLayout{  27.72f, 6.30f }
+    };
+
+    for (int floor = 0; floor < 4; ++floor)
+    {
+        const float baseY = floorSurfaceY[floor];
+        for (const BarrierLayout& layout : layouts)
+        {
+            const float leftX = layout.centerX - layout.width * 0.5f;
+            const float rightX = layout.centerX + layout.width * 0.5f;
+
+            for (float postX : { leftX, rightX })
+            {
+                drawCube(
+                    primitiveShader,
+                    cubeVAO,
+                    glm::vec3(postX, baseY + 1.15f, 0.0f),
+                    glm::vec3(0.55f, 2.30f, 0.55f),
+                    0.0f,
+                    darkMetal
+                );
+                drawCube(
+                    primitiveShader,
+                    cubeVAO,
+                    glm::vec3(postX, baseY + 2.45f, 0.0f),
+                    glm::vec3(0.78f, 0.45f, 0.78f),
+                    0.0f,
+                    activeColor
+                );
+            }
+
+            constexpr int stripeCount = 8;
+            const float stripeWidth = layout.width / static_cast<float>(stripeCount);
+            for (int stripe = 0; stripe < stripeCount; ++stripe)
+            {
+                const float stripeX = leftX + stripeWidth * (static_cast<float>(stripe) + 0.5f);
+                drawCube(
+                    primitiveShader,
+                    cubeVAO,
+                    glm::vec3(stripeX, baseY + 1.25f, 0.0f),
+                    glm::vec3(stripeWidth + 0.02f, 0.34f, 0.42f),
+                    0.0f,
+                    stripe % 2 == 0 ? activeColor : inactiveColor
+                );
+            }
+        }
+    }
+}
+
+void drawTrafficArrows(Shader& primitiveShader, unsigned int cubeVAO)
+{
+    const std::array<float, 4> floorSurfaceY = {
+        -2.7509f, 5.2563f, 13.2589f, 21.2597f
+    };
+    const glm::vec4 whiteArrow(0.94f, 0.95f, 0.97f, 0.92f);
+
+    glDisable(GL_CULL_FACE);
+
+    for (int floor = 0; floor < 4; ++floor)
+    {
+        const float y = floorSurfaceY[floor] + 0.13f;
+
+        // Calles junto a las filas A y B: circulacion bidireccional.
+        for (float x : { -33.0f, -16.0f, 1.0f, 18.0f, 35.0f })
+        {
+            drawArrow(
+                primitiveShader,
+                cubeVAO,
+                glm::vec3(x, y, 18.8f),
+                glm::vec3(1.0f, 0.0f, 0.0f),
+                whiteArrow,
+                1.05f,
+                false
+            );
+            drawArrow(
+                primitiveShader,
+                cubeVAO,
+                glm::vec3(x, y, 21.2f),
+                glm::vec3(-1.0f, 0.0f, 0.0f),
+                whiteArrow,
+                1.05f,
+                false
+            );
+            drawArrow(
+                primitiveShader,
+                cubeVAO,
+                glm::vec3(x, y, -21.2f),
+                glm::vec3(1.0f, 0.0f, 0.0f),
+                whiteArrow,
+                1.05f,
+                false
+            );
+            drawArrow(
+                primitiveShader,
+                cubeVAO,
+                glm::vec3(x, y, -18.8f),
+                glm::vec3(-1.0f, 0.0f, 0.0f),
+                whiteArrow,
+                1.05f,
+                false
+            );
+        }
+
+        // Unicamente los corredores ENTRE muros son bidireccionales.
+        for (float corridorX : { -10.68f, 12.45f })
+        {
+            for (float z : { -12.0f, 7.0f })
+            {
+                drawArrow(
+                    primitiveShader,
+                    cubeVAO,
+                    glm::vec3(corridorX - 1.0f, y, z),
+                    glm::vec3(0.0f, 0.0f, 1.0f),
+                    whiteArrow,
+                    1.0f,
+                    false
+                );
+                drawArrow(
+                    primitiveShader,
+                    cubeVAO,
+                    glm::vec3(corridorX + 1.0f, y, z + 5.0f),
+                    glm::vec3(0.0f, 0.0f, -1.0f),
+                    whiteArrow,
+                    1.0f,
+                    false
+                );
+            }
+        }
+    }
+
+    // Rampa izquierda: subida real desde Z positivo a Z negativo.
+    // Rampa derecha: bajada real desde Z positivo a Z negativo.
+    for (int floor = 0; floor < 3; ++floor)
+    {
+        const glm::vec3 leftStart(-37.12f, floorSurfaceY[floor] + 0.18f, 20.0f);
+        const glm::vec3 leftEnd(-37.12f, floorSurfaceY[floor + 1] + 0.18f, -20.0f);
+        const glm::vec3 rightStart(37.10f, floorSurfaceY[floor + 1] + 0.18f, 20.0f);
+        const glm::vec3 rightEnd(37.10f, floorSurfaceY[floor] + 0.18f, -20.0f);
+
+        for (int marker = 1; marker <= 5; ++marker)
+        {
+            const float factor = static_cast<float>(marker) / 6.0f;
+            drawArrow(
+                primitiveShader,
+                cubeVAO,
+                glm::mix(leftStart, leftEnd, factor),
+                leftEnd - leftStart,
+                whiteArrow,
+                1.05f,
+                false
+            );
+            drawArrow(
+                primitiveShader,
+                cubeVAO,
+                glm::mix(rightStart, rightEnd, factor),
+                rightEnd - rightStart,
+                whiteArrow,
+                1.05f,
+                false
+            );
+        }
+    }
+
+    glEnable(GL_CULL_FACE);
+}
+
+
 void drawGuidanceRoute(
     Shader& primitiveShader,
     unsigned int routeVAO,
@@ -2402,8 +3048,8 @@ void renderPhoneUI(Shader& uiShader, unsigned int uiVAO, unsigned int uiVBO)
             phoneY + 470.0f,
             1.45f,
             guidanceTarget == GuidanceTarget::None
-                ? glm::vec4(0.62f, 0.72f, 0.82f, 1.0f)
-                : glm::vec4(1.0f, 0.82f, 0.18f, 1.0f)
+            ? glm::vec4(0.62f, 0.72f, 0.82f, 1.0f)
+            : glm::vec4(1.0f, 0.82f, 0.18f, 1.0f)
         );
     }
 
@@ -2508,6 +3154,331 @@ void framebuffer_size_callback(GLFWwindow*, int width, int height)
     glViewport(0, 0, framebufferWidth, framebufferHeight);
 }
 
+
+glm::vec3 getSimulationPosition()
+{
+    if (controlledVehicle != nullptr)
+        return controlledVehicle->getPosition();
+
+    return camera.Position;
+}
+
+// =========================================================
+// MANDO XBOX
+// =========================================================
+void processGamepadInput(Vehicle& vehicle)
+{
+    if (!glfwJoystickIsGamepad(GLFW_JOYSTICK_1))
+        return;
+
+    GLFWgamepadstate state{};
+    if (!glfwGetGamepadState(GLFW_JOYSTICK_1, &state))
+        return;
+
+    float steering = -state.axes[GLFW_GAMEPAD_AXIS_LEFT_X];
+
+    constexpr float DEAD_ZONE = 0.15f;
+    if (std::abs(steering) < DEAD_ZONE)
+    {
+        steering = 0.0f;
+    }
+    else
+    {
+        const float sign = steering > 0.0f ? 1.0f : -1.0f;
+        steering =
+            sign * ((std::abs(steering) - DEAD_ZONE) / (1.0f - DEAD_ZONE));
+    }
+
+    float cameraX = state.axes[GLFW_GAMEPAD_AXIS_RIGHT_X];
+    float cameraY = state.axes[GLFW_GAMEPAD_AXIS_RIGHT_Y];
+
+    if (std::abs(cameraX) < DEAD_ZONE) cameraX = 0.0f;
+    if (std::abs(cameraY) < DEAD_ZONE) cameraY = 0.0f;
+
+    // Stick derecho: mirar en cámara libre.
+    if (cameraMode == CameraMode::FREE)
+    {
+        constexpr float CAMERA_SPEED = 300.0f;
+        camera.ProcessMouseMovement(
+            cameraX * CAMERA_SPEED * deltaTime,
+            -cameraY * CAMERA_SPEED * deltaTime
+        );
+
+        if (state.buttons[GLFW_GAMEPAD_BUTTON_DPAD_UP] == GLFW_PRESS)
+            moveCameraSafely(FORWARD);
+        if (state.buttons[GLFW_GAMEPAD_BUTTON_DPAD_DOWN] == GLFW_PRESS)
+            moveCameraSafely(BACKWARD);
+        if (state.buttons[GLFW_GAMEPAD_BUTTON_DPAD_LEFT] == GLFW_PRESS)
+            moveCameraSafely(LEFT);
+        if (state.buttons[GLFW_GAMEPAD_BUTTON_DPAD_RIGHT] == GLFW_PRESS)
+            moveCameraSafely(RIGHT);
+    }
+
+    float rightTrigger =
+        glm::clamp(
+            (state.axes[GLFW_GAMEPAD_AXIS_RIGHT_TRIGGER] + 1.0f) * 0.5f,
+            0.0f,
+            1.0f
+        );
+
+    float leftTrigger =
+        glm::clamp(
+            (state.axes[GLFW_GAMEPAD_AXIS_LEFT_TRIGGER] + 1.0f) * 0.5f,
+            0.0f,
+            1.0f
+        );
+
+    float throttle = rightTrigger - leftTrigger;
+    if (std::abs(throttle) < 0.05f)
+        throttle = 0.0f;
+
+    const bool brake =
+        state.buttons[GLFW_GAMEPAD_BUTTON_A] == GLFW_PRESS;
+
+    const bool reset =
+        state.buttons[GLFW_GAMEPAD_BUTTON_B] == GLFW_PRESS;
+
+    const bool leftBumper =
+        state.buttons[GLFW_GAMEPAD_BUTTON_LEFT_BUMPER] == GLFW_PRESS;
+
+    const bool rightBumper =
+        state.buttons[GLFW_GAMEPAD_BUTTON_RIGHT_BUMPER] == GLFW_PRESS;
+
+    if (rightBumper && !rightBumperPressed)
+    {
+        if (cameraMode == CameraMode::FREE)
+            cameraMode = CameraMode::THIRD_PERSON;
+        else if (cameraMode == CameraMode::THIRD_PERSON)
+            cameraMode = CameraMode::DRIVER;
+        else
+            cameraMode = CameraMode::FREE;
+
+        resetThirdPersonCameraOffset();
+    }
+
+    if (leftBumper && !leftBumperPressed)
+    {
+        if (cameraMode == CameraMode::DRIVER)
+            cameraMode = CameraMode::THIRD_PERSON;
+        else if (cameraMode == CameraMode::THIRD_PERSON)
+            cameraMode = CameraMode::FREE;
+        else
+            cameraMode = CameraMode::DRIVER;
+
+        resetThirdPersonCameraOffset();
+    }
+
+    leftBumperPressed = leftBumper;
+    rightBumperPressed = rightBumper;
+
+    const bool controllerDriving =
+        std::abs(throttle) > 0.05f ||
+        std::abs(steering) > 0.05f ||
+        brake ||
+        reset;
+
+    if (controllerDriving)
+    {
+        vehicle.processControllerInput(
+            throttle,
+            steering,
+            brake,
+            reset
+        );
+    }
+}
+
+// =========================================================
+// CÁMARAS DEL VEHÍCULO
+// =========================================================
+glm::mat4 getVehicleCameraView(const Vehicle& vehicle)
+{
+    const glm::vec3 vehiclePosition = vehicle.getPosition();
+    const glm::vec3 forward = vehicle.getForwardVector();
+    const glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
+
+    if (cameraMode == CameraMode::FREE)
+        return camera.GetViewMatrix();
+
+    const bool reversing = vehicle.getSpeed() < -0.05f;
+    const glm::vec3 cameraDirection = reversing ? -forward : forward;
+    const float vehiclePitch = vehicle.getPitch();
+
+    if (cameraMode == CameraMode::THIRD_PERSON)
+    {
+        const float rampFactor =
+            glm::clamp(std::abs(vehiclePitch) / 14.0f, 0.0f, 1.0f);
+
+        const float followDistance = glm::mix(9.0f, 2.8f, rampFactor);
+        const float followHeight = glm::mix(4.2f, 2.6f, rampFactor);
+        const float lookAhead = glm::mix(2.5f, 5.0f, rampFactor);
+
+        const glm::mat4 yawRotation =
+            glm::rotate(
+                glm::mat4(1.0f),
+                glm::radians(thirdPersonYawOffset),
+                worldUp
+            );
+
+        glm::vec3 orbitDirection =
+            glm::normalize(
+                glm::vec3(
+                    yawRotation * glm::vec4(cameraDirection, 0.0f)
+                )
+            );
+
+        glm::vec3 rightAxis = glm::cross(orbitDirection, worldUp);
+        if (glm::length(rightAxis) > 0.0001f)
+        {
+            rightAxis = glm::normalize(rightAxis);
+            const glm::mat4 pitchRotation =
+                glm::rotate(
+                    glm::mat4(1.0f),
+                    glm::radians(thirdPersonPitchOffset),
+                    rightAxis
+                );
+
+            orbitDirection =
+                glm::normalize(
+                    glm::vec3(
+                        pitchRotation * glm::vec4(orbitDirection, 0.0f)
+                    )
+                );
+        }
+
+        const glm::vec3 cameraPosition =
+            vehiclePosition
+            - orbitDirection * followDistance
+            + worldUp * followHeight;
+
+        const glm::vec3 target =
+            vehiclePosition
+            + cameraDirection * lookAhead
+            + worldUp * 0.9f;
+
+        return glm::lookAt(cameraPosition, target, worldUp);
+    }
+
+    if (cameraMode == CameraMode::DRIVER)
+    {
+        const glm::vec3 cameraPosition =
+            vehiclePosition + forward * 1.85f + worldUp * 1.15f;
+
+        const glm::vec3 target =
+            cameraPosition + cameraDirection * 12.0f;
+
+        return glm::lookAt(cameraPosition, target, worldUp);
+    }
+
+    return camera.GetViewMatrix();
+}
+
+glm::vec3 getActiveCameraPosition(const Vehicle& vehicle)
+{
+    const glm::vec3 vehiclePosition = vehicle.getPosition();
+    const glm::vec3 forward = vehicle.getForwardVector();
+    const glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
+
+    if (cameraMode == CameraMode::FREE)
+        return camera.Position;
+
+    const bool reversing = vehicle.getSpeed() < -0.05f;
+    const glm::vec3 cameraDirection = reversing ? -forward : forward;
+
+    if (cameraMode == CameraMode::THIRD_PERSON)
+    {
+        const float rampFactor =
+            glm::clamp(std::abs(vehicle.getPitch()) / 14.0f, 0.0f, 1.0f);
+
+        const float followDistance = glm::mix(9.0f, 2.8f, rampFactor);
+        const float followHeight = glm::mix(4.2f, 2.6f, rampFactor);
+
+        const glm::mat4 yawRotation =
+            glm::rotate(
+                glm::mat4(1.0f),
+                glm::radians(thirdPersonYawOffset),
+                worldUp
+            );
+
+        glm::vec3 orbitDirection =
+            glm::normalize(
+                glm::vec3(
+                    yawRotation * glm::vec4(cameraDirection, 0.0f)
+                )
+            );
+
+        glm::vec3 rightAxis = glm::cross(orbitDirection, worldUp);
+        if (glm::length(rightAxis) > 0.0001f)
+        {
+            rightAxis = glm::normalize(rightAxis);
+            const glm::mat4 pitchRotation =
+                glm::rotate(
+                    glm::mat4(1.0f),
+                    glm::radians(thirdPersonPitchOffset),
+                    rightAxis
+                );
+
+            orbitDirection =
+                glm::normalize(
+                    glm::vec3(
+                        pitchRotation * glm::vec4(orbitDirection, 0.0f)
+                    )
+                );
+        }
+
+        return
+            vehiclePosition
+            - orbitDirection * followDistance
+            + worldUp * followHeight;
+    }
+
+    if (cameraMode == CameraMode::DRIVER)
+    {
+        return
+            vehiclePosition
+            + forward * 1.85f
+            + worldUp * 1.15f;
+    }
+
+    return camera.Position;
+}
+
+void updateThirdPersonCameraReturn(float frameDeltaTime)
+{
+    if (cameraMode != CameraMode::THIRD_PERSON)
+        return;
+
+    const float currentTime = static_cast<float>(glfwGetTime());
+    if (currentTime - lastThirdPersonMouseTime < THIRD_PERSON_RETURN_DELAY)
+        return;
+
+    const float returnFactor =
+        1.0f - std::exp(-THIRD_PERSON_RETURN_SPEED * frameDeltaTime);
+
+    thirdPersonYawOffset =
+        glm::mix(thirdPersonYawOffset, 0.0f, returnFactor);
+
+    thirdPersonPitchOffset =
+        glm::mix(thirdPersonPitchOffset, 0.0f, returnFactor);
+
+    if (std::abs(thirdPersonYawOffset) < 0.01f)
+        thirdPersonYawOffset = 0.0f;
+
+    if (std::abs(thirdPersonPitchOffset) < 0.01f)
+        thirdPersonPitchOffset = 0.0f;
+}
+
+void resetThirdPersonCameraOffset()
+{
+    firstMouse = true;
+    thirdPersonYawOffset = 0.0f;
+    thirdPersonPitchOffset = 0.0f;
+    lastThirdPersonMouseTime = static_cast<float>(glfwGetTime());
+}
+
+// =========================================================
+// CALLBACKS
+// =========================================================
 void mouse_callback(GLFWwindow*, double xpos, double ypos)
 {
     if (firstMouse)
@@ -2515,14 +3486,38 @@ void mouse_callback(GLFWwindow*, double xpos, double ypos)
         lastX = static_cast<float>(xpos);
         lastY = static_cast<float>(ypos);
         firstMouse = false;
+        return;
     }
 
-    const float xoffset = static_cast<float>(xpos) - lastX;
-    const float yoffset = lastY - static_cast<float>(ypos);
+    const float xOffset = static_cast<float>(xpos) - lastX;
+    const float yOffset = lastY - static_cast<float>(ypos);
+
     lastX = static_cast<float>(xpos);
     lastY = static_cast<float>(ypos);
 
-    camera.ProcessMouseMovement(xoffset, yoffset);
+    if (cameraMode == CameraMode::FREE)
+    {
+        camera.ProcessMouseMovement(xOffset, yOffset);
+        return;
+    }
+
+    if (cameraMode == CameraMode::THIRD_PERSON)
+    {
+        thirdPersonYawOffset +=
+            xOffset * THIRD_PERSON_MOUSE_SENSITIVITY;
+
+        thirdPersonPitchOffset +=
+            yOffset * THIRD_PERSON_MOUSE_SENSITIVITY;
+
+        thirdPersonYawOffset =
+            glm::clamp(thirdPersonYawOffset, -75.0f, 75.0f);
+
+        thirdPersonPitchOffset =
+            glm::clamp(thirdPersonPitchOffset, -20.0f, 30.0f);
+
+        lastThirdPersonMouseTime =
+            static_cast<float>(glfwGetTime());
+    }
 }
 
 void scroll_callback(GLFWwindow*, double, double yoffset)

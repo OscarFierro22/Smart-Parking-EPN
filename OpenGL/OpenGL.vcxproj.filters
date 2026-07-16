@@ -19,6 +19,9 @@
     <Filter Include="Source Files\textures">
       <UniqueIdentifier>{9eb76014-5298-4e5f-b1a3-e520f78fee16}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Vehicle">
+      <UniqueIdentifier>{c8e0af35-1d3f-449e-b04b-f960de1b46f3}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\OpenGL_Stuff\Library\glad.c">
@@ -26,6 +29,12 @@
     </ClCompile>
     <ClCompile Include="Proyecto_Final.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Vehicle\Vehicle.cpp">
+      <Filter>Vehicle</Filter>
+    </ClCompile>
+    <ClCompile Include="Vehicle\Wheel.cpp">
+      <Filter>Vehicle</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
