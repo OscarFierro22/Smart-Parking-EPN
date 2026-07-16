@@ -102,7 +102,7 @@ int main()
     //Model ourModel(FileSystem::getPath("resources/objects/backpack/backpack.obj"));
     Model parkingModel("model/parking/parking.obj");
     Model lightModel("model/ceilinglight/ceilinglight.obj");
-    Model streetModel("model/street/street.obj");
+    //Model streetModel("model/street/street.obj");
     Model nightSkyModel("model/night_sky/night_sky.obj");
 
     // ================================================================
@@ -445,24 +445,6 @@ int main()
 
         ourShader.setMat4("model", parking);
         parkingModel.Draw(ourShader);
-
-        // ============================================
-        // 10. RENDERIZAR LAS CALLES / SUELO
-        // ============================================
-        glm::mat4 floor = glm::mat4(1.0f);
-
-        floor = glm::translate(
-            floor,
-            glm::vec3(0.0f, 0.0f, 67.9f)
-        );
-
-        floor = glm::scale(
-            floor,
-            glm::vec3(1.0f)
-        );
-
-        ourShader.setMat4("model", floor);
-        streetModel.Draw(ourShader);
 
         // ============================================
         // 11. RENDERIZAR LAS LÁMPARAS
