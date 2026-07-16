@@ -270,24 +270,24 @@ void drawArrow(
     const glm::vec3 right = glm::normalize(glm::cross(referenceUp, direction));
 
     auto drawBetween = [&](const glm::vec3& startPoint,
-        const glm::vec3& endPoint,
-        float width,
-        float height,
-        const glm::vec4& drawColor)
-        {
-            const glm::vec3 segment = endPoint - startPoint;
-            const float length = glm::length(segment);
-            if (length < 0.0001f)
-                return;
-            drawOrientedBox(
-                shader,
-                cubeVAO,
-                (startPoint + endPoint) * 0.5f,
-                glm::vec3(width, height, length),
-                segment,
-                drawColor
-            );
-        };
+                           const glm::vec3& endPoint,
+                           float width,
+                           float height,
+                           const glm::vec4& drawColor)
+    {
+        const glm::vec3 segment = endPoint - startPoint;
+        const float length = glm::length(segment);
+        if (length < 0.0001f)
+            return;
+        drawOrientedBox(
+            shader,
+            cubeVAO,
+            (startPoint + endPoint) * 0.5f,
+            glm::vec3(width, height, length),
+            segment,
+            drawColor
+        );
+    };
 
     const glm::vec3 shaftStart = center - direction * (0.95f * size);
     const glm::vec3 shaftEnd = center + direction * (0.35f * size);
@@ -497,39 +497,39 @@ int main()
 
     const std::array<glm::vec3, 54> lampPositions = {
         glm::vec3(-15.2176f,  4.5834f,  8.7f), glm::vec3(-15.2176f,  4.5834f, -4.7f),
-        glm::vec3(-5.2176f,  4.5834f,  8.7f), glm::vec3(-5.2176f,  4.5834f, -4.7f),
-        glm::vec3(18.2180f,  4.5834f,  8.7f), glm::vec3(18.2180f,  4.5834f, -4.7f),
-        glm::vec3(8.2180f,  4.5834f,  8.7f), glm::vec3(8.2180f,  4.5834f, -4.7f),
-        glm::vec3(23.7700f,  4.5834f, 20.0f), glm::vec3(0.8734f,  4.5834f, 20.0f),
-        glm::vec3(-22.0232f,  4.5834f, 20.0f), glm::vec3(36.8090f,  4.5834f, 20.0f),
-        glm::vec3(-36.8090f,  4.5834f, 20.0f), glm::vec3(23.7700f,  4.5834f,-23.0f),
-        glm::vec3(0.8734f,  4.5834f,-23.0f), glm::vec3(-22.0232f,  4.5834f,-23.0f),
-        glm::vec3(36.8090f,  4.5834f,-23.0f), glm::vec3(-36.8090f,  4.5834f,-23.0f),
+        glm::vec3( -5.2176f,  4.5834f,  8.7f), glm::vec3( -5.2176f,  4.5834f, -4.7f),
+        glm::vec3( 18.2180f,  4.5834f,  8.7f), glm::vec3( 18.2180f,  4.5834f, -4.7f),
+        glm::vec3(  8.2180f,  4.5834f,  8.7f), glm::vec3(  8.2180f,  4.5834f, -4.7f),
+        glm::vec3( 23.7700f,  4.5834f, 20.0f), glm::vec3(  0.8734f,  4.5834f, 20.0f),
+        glm::vec3(-22.0232f,  4.5834f, 20.0f), glm::vec3( 36.8090f,  4.5834f, 20.0f),
+        glm::vec3(-36.8090f,  4.5834f, 20.0f), glm::vec3( 23.7700f,  4.5834f,-23.0f),
+        glm::vec3(  0.8734f,  4.5834f,-23.0f), glm::vec3(-22.0232f,  4.5834f,-23.0f),
+        glm::vec3( 36.8090f,  4.5834f,-23.0f), glm::vec3(-36.8090f,  4.5834f,-23.0f),
 
         glm::vec3(-15.2176f, 12.5810f,  8.7f), glm::vec3(-15.2176f, 12.5810f, -4.7f),
-        glm::vec3(-5.2176f, 12.5810f,  8.7f), glm::vec3(-5.2176f, 12.5810f, -4.7f),
-        glm::vec3(18.2180f, 12.5810f,  8.7f), glm::vec3(18.2180f, 12.5810f, -4.7f),
-        glm::vec3(8.2180f, 12.5810f,  8.7f), glm::vec3(8.2180f, 12.5810f, -4.7f),
-        glm::vec3(23.7700f, 12.5810f, 20.0f), glm::vec3(0.8734f, 12.5810f, 20.0f),
-        glm::vec3(-22.0232f, 12.5810f, 20.0f), glm::vec3(36.8090f, 12.5810f, 20.0f),
-        glm::vec3(-36.8090f, 12.5810f, 20.0f), glm::vec3(23.7700f, 12.5810f,-23.0f),
-        glm::vec3(0.8734f, 12.5810f,-23.0f), glm::vec3(-22.0232f, 12.5810f,-23.0f),
-        glm::vec3(36.8090f, 12.5810f,-23.0f), glm::vec3(-36.8090f, 12.5810f,-23.0f),
+        glm::vec3( -5.2176f, 12.5810f,  8.7f), glm::vec3( -5.2176f, 12.5810f, -4.7f),
+        glm::vec3( 18.2180f, 12.5810f,  8.7f), glm::vec3( 18.2180f, 12.5810f, -4.7f),
+        glm::vec3(  8.2180f, 12.5810f,  8.7f), glm::vec3(  8.2180f, 12.5810f, -4.7f),
+        glm::vec3( 23.7700f, 12.5810f, 20.0f), glm::vec3(  0.8734f, 12.5810f, 20.0f),
+        glm::vec3(-22.0232f, 12.5810f, 20.0f), glm::vec3( 36.8090f, 12.5810f, 20.0f),
+        glm::vec3(-36.8090f, 12.5810f, 20.0f), glm::vec3( 23.7700f, 12.5810f,-23.0f),
+        glm::vec3(  0.8734f, 12.5810f,-23.0f), glm::vec3(-22.0232f, 12.5810f,-23.0f),
+        glm::vec3( 36.8090f, 12.5810f,-23.0f), glm::vec3(-36.8090f, 12.5810f,-23.0f),
 
         glm::vec3(-15.2176f, 20.5786f,  8.7f), glm::vec3(-15.2176f, 20.5786f, -4.7f),
-        glm::vec3(-5.2176f, 20.5786f,  8.7f), glm::vec3(-5.2176f, 20.5786f, -4.7f),
-        glm::vec3(18.2180f, 20.5786f,  8.7f), glm::vec3(18.2180f, 20.5786f, -4.7f),
-        glm::vec3(8.2180f, 20.5786f,  8.7f), glm::vec3(8.2180f, 20.5786f, -4.7f),
-        glm::vec3(23.7700f, 20.5786f, 20.0f), glm::vec3(0.8734f, 20.5786f, 20.0f),
-        glm::vec3(-22.0232f, 20.5786f, 20.0f), glm::vec3(36.8090f, 20.5786f, 20.0f),
-        glm::vec3(-36.8090f, 20.5786f, 20.0f), glm::vec3(23.7700f, 20.5786f,-23.0f),
-        glm::vec3(0.8734f, 20.5786f,-23.0f), glm::vec3(-22.0232f, 20.5786f,-23.0f),
-        glm::vec3(36.8090f, 20.5786f,-23.0f), glm::vec3(-36.8090f, 20.5786f,-23.0f)
+        glm::vec3( -5.2176f, 20.5786f,  8.7f), glm::vec3( -5.2176f, 20.5786f, -4.7f),
+        glm::vec3( 18.2180f, 20.5786f,  8.7f), glm::vec3( 18.2180f, 20.5786f, -4.7f),
+        glm::vec3(  8.2180f, 20.5786f,  8.7f), glm::vec3(  8.2180f, 20.5786f, -4.7f),
+        glm::vec3( 23.7700f, 20.5786f, 20.0f), glm::vec3(  0.8734f, 20.5786f, 20.0f),
+        glm::vec3(-22.0232f, 20.5786f, 20.0f), glm::vec3( 36.8090f, 20.5786f, 20.0f),
+        glm::vec3(-36.8090f, 20.5786f, 20.0f), glm::vec3( 23.7700f, 20.5786f,-23.0f),
+        glm::vec3(  0.8734f, 20.5786f,-23.0f), glm::vec3(-22.0232f, 20.5786f,-23.0f),
+        glm::vec3( 36.8090f, 20.5786f,-23.0f), glm::vec3(-36.8090f, 20.5786f,-23.0f)
     };
 
     const std::array<glm::vec3, 2> lightOffsets = {
         glm::vec3(-1.7f, -2.0f, 0.0f),
-        glm::vec3(1.7f, -2.0f, 0.0f)
+        glm::vec3( 1.7f, -2.0f, 0.0f)
     };
 
 
@@ -804,30 +804,30 @@ std::vector<ParkingSlot> createParkingSlots()
     slots.reserve(169);
 
     auto addSlot = [&](int floor, char row, int number, float x)
-        {
-            std::ostringstream id;
-            id << floorIds[floor] << '-' << row
-                << std::setw(2) << std::setfill('0') << number;
+    {
+        std::ostringstream id;
+        id << floorIds[floor] << '-' << row
+           << std::setw(2) << std::setfill('0') << number;
 
-            const SlotState initialState =
-                (row == 'A' && number <= 2)
-                ? SlotState::Disabled
-                : SlotState::Available;
+        const SlotState initialState =
+            (row == 'A' && number <= 2)
+            ? SlotState::Disabled
+            : SlotState::Available;
 
-            const float z = row == 'A' ? northRowZ : southRowZ;
-            const float rotation = row == 'A' ? 0.0f : 180.0f;
-            slots.push_back({
-                id.str(),
-                floorIds[floor],
-                floor,
-                row,
-                number,
-                glm::vec3(x, floorSurfaceY[floor] + 0.28f, z),
-                rotation,
-                initialState,
-                -1
-                });
-        };
+        const float z = row == 'A' ? northRowZ : southRowZ;
+        const float rotation = row == 'A' ? 0.0f : 180.0f;
+        slots.push_back({
+            id.str(),
+            floorIds[floor],
+            floor,
+            row,
+            number,
+            glm::vec3(x, floorSurfaceY[floor] + 0.28f, z),
+            rotation,
+            initialState,
+            -1
+        });
+    };
 
     for (int floor = 0; floor < 4; ++floor)
     {
@@ -872,28 +872,28 @@ ParkingGraph createParkingGraph(std::vector<ParkingSlot>& slots)
     ParkingGraph graph;
 
     auto addNode = [&graph](const glm::vec3& position)
-        {
-            const int index = static_cast<int>(graph.nodes.size());
-            graph.nodes.push_back(position);
-            graph.adjacency.emplace_back();
-            return index;
-        };
+    {
+        const int index = static_cast<int>(graph.nodes.size());
+        graph.nodes.push_back(position);
+        graph.adjacency.emplace_back();
+        return index;
+    };
 
     auto nearestColumnForX = [&xCenters](float x)
+    {
+        int nearest = 0;
+        float nearestDistance = std::numeric_limits<float>::infinity();
+        for (int column = 0; column < 22; ++column)
         {
-            int nearest = 0;
-            float nearestDistance = std::numeric_limits<float>::infinity();
-            for (int column = 0; column < 22; ++column)
+            const float distance = std::abs(xCenters[column] - x);
+            if (distance < nearestDistance)
             {
-                const float distance = std::abs(xCenters[column] - x);
-                if (distance < nearestDistance)
-                {
-                    nearestDistance = distance;
-                    nearest = column;
-                }
+                nearestDistance = distance;
+                nearest = column;
             }
-            return nearest;
-        };
+        }
+        return nearest;
+    };
 
     // Acceso frontal. La conexion atraviesa el hueco real sin parqueaderos.
     graph.entranceNode = addNode(glm::vec3(12.0f, floorSurfaceY[0] + 0.42f, 47.0f));
@@ -1007,42 +1007,42 @@ std::vector<CollisionBox> createStaticCollisionBoxes()
     std::vector<CollisionBox> boxes;
 
     auto addPillar = [&](float x, float y, float z, float height, const std::string& name)
-        {
-            // El OBJ usa pilares de aproximadamente 2 x 2 unidades. Se agrega
-            // un pequeno margen para que la camara no pueda atravesar sus caras,
-            // especialmente en los pisos superiores.
-            boxes.push_back({
-                glm::vec3(x, y, z),
-                glm::vec3(1.10f, height * 0.5f, 1.10f),
-                name
-                });
-        };
+    {
+        // El OBJ usa pilares de aproximadamente 2 x 2 unidades. Se agrega
+        // un pequeno margen para que la camara no pueda atravesar sus caras,
+        // especialmente en los pisos superiores.
+        boxes.push_back({
+            glm::vec3(x, y, z),
+            glm::vec3(1.10f, height * 0.5f, 1.10f),
+            name
+        });
+    };
 
     // Posiciones y alturas obtenidas directamente de Pillars_0 en parking.obj.
     addPillar(-44.0381f, 11.6681f, -32.5211f, 33.7317f, "PILAR_01");
-    addPillar(-44.0381f, 9.3239f, -9.6180f, 29.0433f, "PILAR_02");
-    addPillar(-44.0381f, 9.3240f, 12.5664f, 29.0433f, "PILAR_03");
-    addPillar(-44.0381f, 11.8276f, 31.9347f, 34.0506f, "PILAR_04");
+    addPillar(-44.0381f,  9.3239f,  -9.6180f, 29.0433f, "PILAR_02");
+    addPillar(-44.0381f,  9.3240f,  12.5664f, 29.0433f, "PILAR_03");
+    addPillar(-44.0381f, 11.8276f,  31.9347f, 34.0506f, "PILAR_04");
 
-    addPillar(-22.4734f, 9.3239f, -32.5211f, 29.0433f, "PILAR_05");
-    addPillar(-22.4734f, 14.4509f, -9.6180f, 39.2972f, "PILAR_06");
-    addPillar(-22.4734f, 14.4509f, 12.5664f, 39.2972f, "PILAR_07");
-    addPillar(-22.4734f, 9.3240f, 31.9347f, 29.0433f, "PILAR_08");
+    addPillar(-22.4734f,  9.3239f, -32.5211f, 29.0433f, "PILAR_05");
+    addPillar(-22.4734f, 14.4509f,  -9.6180f, 39.2972f, "PILAR_06");
+    addPillar(-22.4734f, 14.4509f,  12.5664f, 39.2972f, "PILAR_07");
+    addPillar(-22.4734f,  9.3240f,  31.9347f, 29.0433f, "PILAR_08");
 
-    addPillar(0.8495f, 9.3239f, -32.5211f, 29.0433f, "PILAR_09");
-    addPillar(0.8495f, 14.4509f, -9.6180f, 39.2972f, "PILAR_10");
-    addPillar(0.8495f, 14.4509f, 12.5664f, 39.2972f, "PILAR_11");
-    addPillar(0.8495f, 9.3240f, 31.9347f, 29.0433f, "PILAR_12");
+    addPillar(  0.8495f,  9.3239f, -32.5211f, 29.0433f, "PILAR_09");
+    addPillar(  0.8495f, 14.4509f,  -9.6180f, 39.2972f, "PILAR_10");
+    addPillar(  0.8495f, 14.4509f,  12.5664f, 39.2972f, "PILAR_11");
+    addPillar(  0.8495f,  9.3240f,  31.9347f, 29.0433f, "PILAR_12");
 
-    addPillar(24.0039f, 9.3239f, -32.5211f, 29.0433f, "PILAR_13");
-    addPillar(24.0039f, 14.4509f, -9.6180f, 39.2972f, "PILAR_14");
-    addPillar(24.0039f, 14.4509f, 12.5664f, 39.2972f, "PILAR_15");
-    addPillar(24.0039f, 9.3240f, 31.9347f, 29.0433f, "PILAR_16");
+    addPillar( 24.0039f,  9.3239f, -32.5211f, 29.0433f, "PILAR_13");
+    addPillar( 24.0039f, 14.4509f,  -9.6180f, 39.2972f, "PILAR_14");
+    addPillar( 24.0039f, 14.4509f,  12.5664f, 39.2972f, "PILAR_15");
+    addPillar( 24.0039f,  9.3240f,  31.9347f, 29.0433f, "PILAR_16");
 
-    addPillar(44.0580f, 11.6681f, -32.5211f, 33.7317f, "PILAR_17");
-    addPillar(44.0580f, 9.3239f, -9.6180f, 29.0433f, "PILAR_18");
-    addPillar(44.0580f, 9.3240f, 12.5664f, 29.0433f, "PILAR_19");
-    addPillar(44.0580f, 11.8276f, 31.9347f, 34.0506f, "PILAR_20");
+    addPillar( 44.0580f, 11.6681f, -32.5211f, 33.7317f, "PILAR_17");
+    addPillar( 44.0580f,  9.3239f,  -9.6180f, 29.0433f, "PILAR_18");
+    addPillar( 44.0580f,  9.3240f,  12.5664f, 29.0433f, "PILAR_19");
+    addPillar( 44.0580f, 11.8276f,  31.9347f, 34.0506f, "PILAR_20");
 
     return boxes;
 }
@@ -1789,14 +1789,14 @@ void exportParkingStateJson()
         output << "{\n";
         output << "  \"version\": 4,\n";
         output << "  \"simulation_time_seconds\": "
-            << std::fixed << std::setprecision(2) << glfwGetTime() << ",\n";
+               << std::fixed << std::setprecision(2) << glfwGetTime() << ",\n";
         output << "  \"total_slots\": " << parkingSlots.size() << ",\n";
         output << "  \"available\": " << available << ",\n";
         output << "  \"occupied\": " << occupied << ",\n";
         output << "  \"reserved\": " << reserved << ",\n";
         output << "  \"disabled\": " << disabled << ",\n";
         output << "  \"guidance_active\": "
-            << (!activeRoute.empty() ? "true" : "false") << ",\n";
+               << (!activeRoute.empty() ? "true" : "false") << ",\n";
         output << "  \"reserved_slot_id\": \"" << reservedId << "\",\n";
 
         const std::string guidanceType =
@@ -1822,7 +1822,7 @@ void exportParkingStateJson()
                 << "\"id\":\"" << floorIds[floor] << "\","
                 << "\"name\":\"" << floorNames[floor] << "\","
                 << "\"level\":" << floor << ','
-                << "\"total\":" << floorTotal[floor] << ','
+                << "\"total\":" << floorTotal[floor] << ',' 
                 << "\"available\":" << floorAvailable[floor] << ','
                 << "\"occupied\":" << floorOccupied[floor] << ','
                 << "\"reserved\":" << floorReserved[floor] << ','
@@ -2402,8 +2402,8 @@ void renderPhoneUI(Shader& uiShader, unsigned int uiVAO, unsigned int uiVBO)
             phoneY + 470.0f,
             1.45f,
             guidanceTarget == GuidanceTarget::None
-            ? glm::vec4(0.62f, 0.72f, 0.82f, 1.0f)
-            : glm::vec4(1.0f, 0.82f, 0.18f, 1.0f)
+                ? glm::vec4(0.62f, 0.72f, 0.82f, 1.0f)
+                : glm::vec4(1.0f, 0.82f, 0.18f, 1.0f)
         );
     }
 
