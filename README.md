@@ -31,7 +31,7 @@ Sistema de estacionamiento inteligente desarrollado con OpenGL, Flutter y FastAP
 
 ## Documentación técnica
 
-[Descargar informe técnico](docs/Informe_Tecnico_Smart_Parking.docx)
+📥 **[Descargar Informe Técnico](docs/Informe_Tecnico_Smart_Parking.docx)**
 
 ## Tecnologías utilizadas
 
