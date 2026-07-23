@@ -18,8 +18,7 @@ Sistema de estacionamiento inteligente desarrollado con OpenGL, Flutter y FastAP
 ![Aplicación Flutter](images/app_flutter.png)
 
 ## Ruta calculada con Dijkstra
-
-![Ruta Dijkstra](images/ruta_dijkstra.png)
+![Ruta Dijkstra](images/ruta_dijkstra.jpeg)
 
 ## Simulación 3D
 
