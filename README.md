@@ -1,167 +1,47 @@
-# 🚗 Smart Parking
+# Smart Parking EPN
 
-> Sistema de estacionamiento inteligente desarrollado con **C++**, **OpenGL**, **Flutter** y **FastAPI**.
+Sistema de estacionamiento inteligente desarrollado con OpenGL, Flutter y FastAPI.
 
-## 📌 Descripción
+![Portada del proyecto](images/portada.png)
 
-Smart Parking es un proyecto que integra una simulación tridimensional de un parqueadero inteligente con una aplicación móvil y un backend para la gestión del estado de los estacionamientos.
+## Características principales
 
-El objetivo es proporcionar navegación interna en tiempo real, visualización de plazas disponibles y una representación 3D interactiva del parqueadero.
+- Simulación 3D del estacionamiento.
+- Aplicación móvil desarrollada en Flutter.
+- Backend con FastAPI.
+- Cálculo de rutas mediante el algoritmo de Dijkstra.
+- Restricciones de circulación y detección de colisiones.
+- Visualización de espacios disponibles, ocupados y reservados.
 
----
+## Aplicación móvil
 
-# ✨ Características
+![Aplicación Flutter](images/app_flutter.png)
 
-- 🏢 Simulación 3D de un parqueadero multinivel.
-- 🚗 Vehículo conducible dentro del escenario.
-- 🚧 Sistema de colisiones con paredes, pisos y rampas.
-- 📱 Aplicación móvil desarrollada con Flutter.
-- 🌐 Backend desarrollado con FastAPI.
-- 📡 Comunicación mediante Wi-Fi.
-- 🧭 Algoritmo de búsqueda de rutas (Dijkstra).
-- 🅿 Gestión de plazas disponibles, ocupadas y reservadas.
-- 🌙 Cambio entre modo día y noche.
-- 🎥 Múltiples cámaras dentro del simulador.
+## Ruta calculada con Dijkstra
 
----
+![Ruta Dijkstra](images/ruta_dijkstra.png)
 
-# 🖥️ Tecnologías
+## Simulación 3D
 
-| Tecnología | Uso |
-|------------|-----|
-| C++ | Simulador |
-| OpenGL | Renderizado 3D |
-| GLFW / GLAD | Contexto OpenGL |
-| GLM | Matemáticas 3D |
-| Assimp | Carga de modelos |
-| stb_image | Texturas |
-| Flutter | Aplicación móvil |
-| FastAPI | Backend |
-| Python | API REST |
-| Git | Control de versiones |
+![Simulación](images/simulation.png)
 
----
+## Restricciones y colisiones
 
-# 🏗️ Arquitectura
+![Restricciones](images/restriction.png)
 
-```
-           Flutter App
-                │
-          HTTP / JSON
-                │
-          FastAPI Backend
-                │
-     Estado del parqueadero
-                │
-      Simulador OpenGL (C++)
-                │
-          Algoritmo Dijkstra
-```
+## Documentación técnica
 
----
+[Descargar informe técnico](docs/Informe_Tecnico_Smart_Parking.docx)
 
-# 📱 Aplicación móvil
+## Tecnologías utilizadas
 
-La aplicación permite:
-
-- visualizar la disponibilidad de plazas
-- seleccionar el piso
-- buscar un lugar libre
-- buscar la salida
-- visualizar un mapa interno
-- conectarse automáticamente mediante Wi-Fi al servidor
-
----
-
-# 🖥️ Simulador OpenGL
-
-El simulador incluye:
-
-- parqueadero de cuatro niveles
-- rampas
-- plazas de estacionamiento
-- iluminación
-- texturas
-- modelos 3D
-- vehículo conducible
-- cámaras
-- colisiones
-- navegación
-
----
-
-# 📂 Estructura
-
-```
-SmartParking
-│
-├── OpenGL/
-│   ├── Vehicle/
-│   ├── model/
-│   ├── shaders/
-│   └── Proyecto_Final.cpp
-│
-├── backend/
-│   ├── server.py
-│   └── requirements.txt
-│
-├── smart_parking_app/
-│
-├── OpenGL_Stuff/
-│
-└── OpenGL.sln
-```
-
----
-
-# 🚀 Instalación
-
-## Backend
-
-```bash
-cd backend
-pip install -r requirements.txt
-python server.py
-```
-
-## Flutter
-
-```bash
-cd smart_parking_app
-flutter pub get
-flutter run
-```
-
-## OpenGL
-
-Abrir la solución:
-
-```
-OpenGL.sln
-```
-
-Compilar y ejecutar desde Visual Studio.
-
-
-
-
-
-
----
-
-# 🧭 Funcionamiento
-
-1. Se inicia el backend.
-2. La aplicación se conecta mediante Wi-Fi.
-3. El simulador obtiene el estado del parqueadero.
-4. El usuario selecciona una plaza.
-5. Dijkstra calcula la ruta óptima.
-6. El simulador guía al conductor.
-7. La aplicación actualiza el estado en tiempo real.
-
----
-
-
+- C++
+- OpenGL
+- Flutter
+- FastAPI
+- Python
+- Git
+- GitHub
 # 📄 Licencia
 
 Proyecto académico desarrollado con fines educativos.
